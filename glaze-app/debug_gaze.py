@@ -97,7 +97,7 @@ def _compute_gaze(landmarks, R, w, h):
     if eye_width > 1e-6:
         offset /= eye_width
 
-    head_forward = -R[:, 2]
+    head_forward = R[:, 2]
     yaw_iris   = -offset[0] * 0.8
     pitch_iris =  offset[1] * 0.8
     gaze = _rot_y(yaw_iris) @ _rot_x(pitch_iris) @ head_forward
@@ -266,8 +266,7 @@ def main():
         # Eixos da cabeça no nariz
         draw_head_axes(display, R, nose_px, w, h, scale=50)
 
-        # Head-forward direction (azul claro = profundidade)
-        # já incluído em draw_head_axes como seta azul
+        # Head-forward direction incluído em draw_head_axes como seta laranja
 
         # Indicador de gaze normalizado (canto superior direito)
         draw_gaze_indicator(display, x_norm, y_norm,

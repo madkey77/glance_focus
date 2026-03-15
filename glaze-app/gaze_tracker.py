@@ -99,8 +99,9 @@ def _compute_gaze_direction(landmarks, R, w, h):
     if eye_width > 1e-6:
         offset /= eye_width
 
-    # Vetor base da cabeça (forward = -Z no sistema MediaPipe)
-    head_forward = -R[:, 2]
+    # Vetor base da cabeça: PCA Z aponta para a câmera (Z negativo em imagem),
+    # então R[:,2] já é o forward correto (sem negação)
+    head_forward = R[:, 2]
 
     # Aplica rotações de yaw/pitch conforme offset da íris
     yaw   = -offset[0] * 0.8   # horizontal
