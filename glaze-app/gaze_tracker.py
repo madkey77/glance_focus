@@ -1,19 +1,24 @@
 # glaze-app/gaze_tracker.py
 """
-GazeTracker — encapsula MediaPipe FaceMesh e lógica de gaze.
+GazeTracker — encapsula MediaPipe FaceLandmarker (nova API 0.10+) e lógica de gaze.
 Roda captura em thread separada. Expõe get_gaze() → (x, y) normalizado [0..1] ou None.
+
+Requer: face_landmarker.task na pasta glaze-app/
+Download: https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task
 
 Baseado em: https://github.com/JEOresearch/EyeTracker/tree/main/Webcam3DTracker
 """
 import cv2
 import numpy as np
 import mediapipe as mp
+from mediapipe.tasks import python as mp_python
+from mediapipe.tasks.python import vision as mp_vision
 import math
 import threading
 from collections import deque
-from scipy.spatial.transform import Rotation as Rscipy
 from config import CAMERA_INDEX, CAPTURE_WIDTH, CAPTURE_HEIGHT, GAZE_SMOOTH_FRAMES
 
+MODEL_PATH = "face_landmarker.task"
 
 # ── índices de landmarks ────────────────────────────────────────────────────
 NOSE_INDICES = [4, 45, 275, 220, 440, 1, 5, 51, 281, 44, 274, 241,
@@ -108,6 +113,9 @@ def _compute_gaze_direction(landmarks, R, w, h):
 class GazeTracker:
     """
     Captura webcam e estima gaze normalizado [0..1] em thread de background.
+    Usa a nova API mediapipe.tasks (0.10+) com FaceLandmarker em modo VIDEO.
+
+    Requer face_landmarker.task na mesma pasta que main.py.
 
     Uso:
         tracker = GazeTracker()
@@ -124,18 +132,24 @@ class GazeTracker:
         self._ref_nose = [None]    # estabilização de eixos
         self._smooth_buf = deque(maxlen=GAZE_SMOOTH_FRAMES)
 
-        # Calibração de centro (1 ponto, usado para inicializar coordenadas)
+        # Calibração de centro
         self._calib_yaw   = 0.0
         self._calib_pitch = 0.0
         self._calibrated  = False
 
-        self._mp_face = mp.solutions.face_mesh.FaceMesh(
-            static_image_mode=False,
-            max_num_faces=1,
-            refine_landmarks=True,
-            min_detection_confidence=0.5,
+        # Nova API: FaceLandmarker em modo VIDEO (síncrono por frame)
+        base_options = mp_python.BaseOptions(model_asset_path=MODEL_PATH)
+        options = mp_vision.FaceLandmarkerOptions(
+            base_options=base_options,
+            running_mode=mp_vision.RunningMode.VIDEO,
+            num_faces=1,
+            min_face_detection_confidence=0.5,
+            min_face_presence_confidence=0.5,
             min_tracking_confidence=0.5,
+            output_face_blendshapes=False,
+            output_facial_transformation_matrixes=False,
         )
+        self._detector = mp_vision.FaceLandmarker.create_from_options(options)
 
     def start(self):
         self._running = True
@@ -146,6 +160,7 @@ class GazeTracker:
         self._running = False
         if self._thread:
             self._thread.join(timeout=2)
+        self._detector.close()
 
     def calibrate_center(self):
         """Captura gaze atual como ponto de centro (yaw/pitch = 0)."""
@@ -162,7 +177,7 @@ class GazeTracker:
 
     def _raw_gaze_angles(self):
         with self._lock:
-            return self._gaze  # temporário — refinado na calibração 5-pontos
+            return self._gaze
 
     def _loop(self):
         cap = cv2.VideoCapture(CAMERA_INDEX)
@@ -175,15 +190,23 @@ class GazeTracker:
                 continue
 
             h, w = frame.shape[:2]
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            result = self._mp_face.process(rgb)
 
-            if not result.multi_face_landmarks:
+            # Nova API: converter para mp.Image e chamar detect_for_video
+            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+            timestamp_ms = int(cap.get(cv2.CAP_PROP_POS_MSEC))
+
+            result = self._detector.detect_for_video(mp_image, timestamp_ms)
+
+            # Nova API: result.face_landmarks em vez de result.multi_face_landmarks
+            if not result.face_landmarks:
                 with self._lock:
                     self._gaze = None
                 continue
 
-            lm = result.multi_face_landmarks[0].landmark
+            # Os landmarks têm os mesmos atributos .x .y .z normalizados
+            lm = result.face_landmarks[0]
+
             R = _compute_head_rotation(lm, w, h, self._ref_nose)
             gaze_dir = _compute_gaze_direction(lm, R, w, h)
 
