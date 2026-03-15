@@ -70,6 +70,7 @@ class OverlayBorder:
     """
     def __init__(self):
         self._hwnd_target = None
+        self._hwnd_lock = threading.Lock()
         self._visible = False
         self._root = None
         self._thread = threading.Thread(target=self._run, daemon=True)
@@ -91,9 +92,11 @@ class OverlayBorder:
 
     def _update_loop(self):
         import win32gui
-        if self._visible and self._hwnd_target:
+        with self._hwnd_lock:
+            target = self._hwnd_target
+        if self._visible and target:
             try:
-                rect = win32gui.GetWindowRect(self._hwnd_target)
+                rect = win32gui.GetWindowRect(target)
                 l, t, r, b = rect
                 thickness = 4
                 self._root.geometry(f"{r-l}x{b-t}+{l}+{t}")
@@ -111,7 +114,8 @@ class OverlayBorder:
         self._root.after(50, self._update_loop)
 
     def set_target(self, hwnd):
-        self._hwnd_target = hwnd
+        with self._hwnd_lock:
+            self._hwnd_target = hwnd
 
     def show(self):
         self._visible = True
