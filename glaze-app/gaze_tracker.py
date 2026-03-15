@@ -223,9 +223,9 @@ class GazeTracker:
             yaw   -= self._calib_yaw
             pitch -= self._calib_pitch
 
-            # Normaliza para [0..1] (range ±30 graus)
-            x_norm = 0.5 + yaw   / math.radians(60)
-            y_norm = 0.5 + pitch / math.radians(40)
+            # Normaliza para [0..1] (range ±45 graus horizontal, ±35 vertical)
+            x_norm = 0.5 + yaw   / math.radians(90)
+            y_norm = 0.5 + pitch / math.radians(70)
             x_norm = max(0.0, min(1.0, x_norm))
             y_norm = max(0.0, min(1.0, y_norm))
 

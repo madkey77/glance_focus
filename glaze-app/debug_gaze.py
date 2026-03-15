@@ -241,8 +241,8 @@ def main():
         yaw_deg   = math.degrees(yaw_rad)
         pitch_deg = math.degrees(pitch_rad)
 
-        x_norm = max(0.0, min(1.0, 0.5 + yaw_rad   / math.radians(60)))
-        y_norm = max(0.0, min(1.0, 0.5 + pitch_rad  / math.radians(40)))
+        x_norm = max(0.0, min(1.0, 0.5 + yaw_rad   / math.radians(90)))
+        y_norm = max(0.0, min(1.0, 0.5 + pitch_rad  / math.radians(70)))
 
         # ── Desenho ──────────────────────────────────────────────────────────
 
