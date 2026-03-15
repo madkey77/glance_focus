@@ -6,6 +6,7 @@ Calcula homografia 2D: gaze normalizado → coordenada absoluta de desktop (px).
 import json
 import time
 import threading
+import queue
 import numpy as np
 import cv2
 from config import CALIBRATION_FILE, CALIBRATION_SAMPLES
@@ -33,66 +34,123 @@ def _normalized_point_pos(monitor, point_idx):
     return int(l + nx * w), int(t + ny * h), nx, ny
 
 
-class CalibrationWindow:
-    """Janela fullscreen para um monitor exibindo ponto de calibração pulsante."""
+class _TkCalibrationSession:
+    """
+    Gerencia a sessão Tkinter inteira para calibração em uma única thread dedicada.
+    Recebe comandos via fila (show_point, destroy) para evitar Tcl_AsyncDelete.
+    """
 
-    def __init__(self, monitor, point_idx, label):
-        self.monitor = monitor
-        self.point_idx = point_idx
-        self.label = label
-        self.confirmed = threading.Event()
+    def __init__(self):
+        self._cmd_queue = queue.Queue()
+        self._confirmed = threading.Event()
+        self._ready = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
+        self._ready.wait()  # espera Tk inicializar
 
     def _run(self):
         import tkinter as tk
-        root = tk.Tk()
-        root.overrideredirect(True)
-        l, t = self.monitor["left"], self.monitor["top"]
-        w = self.monitor["right"] - l
-        h = self.monitor["bottom"] - t
+        self._tk = tk
+        self._root = tk.Tk()
+        self._root.overrideredirect(True)
+        self._root.attributes("-topmost", True)
+        self._root.configure(bg="black")
+        self._root.withdraw()
+
+        self._canvas = tk.Canvas(self._root, bg="black", highlightthickness=0)
+        self._canvas.pack(fill="both", expand=True)
+
+        self._ready.set()
+        self._root.after(50, self._process_queue)
+        self._root.mainloop()
+
+    def _process_queue(self):
+        try:
+            while True:
+                cmd, args = self._cmd_queue.get_nowait()
+                if cmd == "show_point":
+                    self._do_show_point(*args)
+                elif cmd == "destroy":
+                    self._root.destroy()
+                    return
+        except queue.Empty:
+            pass
+        self._root.after(50, self._process_queue)
+
+    def _do_show_point(self, monitor, point_idx, label):
+        tk = self._tk
+        root = self._root
+        canvas = self._canvas
+
+        l, t = monitor["left"], monitor["top"]
+        w = monitor["right"] - l
+        h = monitor["bottom"] - t
         root.geometry(f"{w}x{h}+{l}+{t}")
-        root.configure(bg="black")
-        root.attributes("-topmost", True)
+        root.deiconify()
+        root.lift()
+        root.focus_force()
 
-        canvas = tk.Canvas(root, bg="black", highlightthickness=0)
-        canvas.pack(fill="both", expand=True)
+        canvas.configure(width=w, height=h)
+        canvas.delete("all")
 
-        px, py, nx, ny = _normalized_point_pos(self.monitor, self.point_idx)
-        # Posição relativa à janela
+        px, py, nx, ny = _normalized_point_pos(monitor, point_idx)
         cx = int(nx * w)
         cy = int(ny * h)
 
-        # Texto de instrução
-        canvas.create_text(w//2, h-60, text=f"Olhe para o ponto e pressione SPACE",
+        canvas.create_text(w//2, h-60,
+                           text="Olhe para o ponto e pressione SPACE",
                            fill="white", font=("Arial", 16))
-        canvas.create_text(w//2, h-30, text=self.label,
+        canvas.create_text(w//2, h-30, text=label,
                            fill="#00FF88", font=("Arial", 12))
 
-        # Animação de pulso
-        radius = [20]
-        growing = [True]
+        self._confirmed.clear()
+        self._pulse_cx = cx
+        self._pulse_cy = cy
+        self._pulse_r = [20]
+        self._pulse_growing = [True]
+        self._pulse_active = True
 
-        def pulse():
-            canvas.delete("dot")
-            r = radius[0]
-            canvas.create_oval(cx-r, cy-r, cx+r, cy+r,
-                               fill="#00FF88", outline="white", width=2, tags="dot")
-            if growing[0]:
-                radius[0] += 1
-                if radius[0] >= 28: growing[0] = False
-            else:
-                radius[0] -= 1
-                if radius[0] <= 16: growing[0] = True
-            root.after(30, pulse)
+        root.bind("<space>", self._on_space)
+        self._animate_pulse(canvas)
 
-        pulse()
-        root.bind("<space>", lambda e: (self.confirmed.set(), root.destroy()))
-        root.focus_force()
-        root.mainloop()
+    def _animate_pulse(self, canvas):
+        if not self._pulse_active:
+            return
+        canvas.delete("dot")
+        r = self._pulse_r[0]
+        cx, cy = self._pulse_cx, self._pulse_cy
+        canvas.create_oval(cx-r, cy-r, cx+r, cy+r,
+                           fill="#00FF88", outline="white", width=2, tags="dot")
+        if self._pulse_growing[0]:
+            self._pulse_r[0] += 1
+            if self._pulse_r[0] >= 28:
+                self._pulse_growing[0] = False
+        else:
+            self._pulse_r[0] -= 1
+            if self._pulse_r[0] <= 16:
+                self._pulse_growing[0] = True
+        self._root.after(30, lambda: self._animate_pulse(canvas))
+
+    def _on_space(self, event):
+        self._pulse_active = False
+        self._confirmed.set()
+
+    def show_point(self, monitor, point_idx, label):
+        """Chamado da thread principal — enfileira o comando para a thread Tk."""
+        self._cmd_queue.put(("show_point", (monitor, point_idx, label)))
 
     def wait_for_confirm(self):
-        self.confirmed.wait()
+        """Bloqueia até o usuário pressionar SPACE."""
+        self._confirmed.wait()
+
+    def hide(self):
+        """Esconde a janela (entre monitores)."""
+        self._root.after(0, self._root.withdraw)
+
+    def destroy(self):
+        """Encerra a sessão Tkinter."""
+        self._cmd_queue.put(("destroy", ()))
+        self._thread.join(timeout=2)
 
 
 class Calibration:
@@ -105,46 +163,55 @@ class Calibration:
         monitors: lista de dicts com left/top/right/bottom/id/name
         gaze_tracker: instância de GazeTracker com get_gaze()
         """
-        for monitor in monitors:
-            mid = monitor["id"]
-            name = monitor["name"]
-            print(f"\n[Calibração] Monitor {mid+1} de {len(monitors)}: {name}")
-            print(f"[Calibração] Dispositivo: {monitor.get('device', '?')}")
+        # Uma única sessão Tkinter para toda a calibração
+        session = _TkCalibrationSession()
 
-            src_points = []  # gaze normalizado
-            dst_points = []  # pixels absolutos
+        try:
+            for monitor in monitors:
+                mid = monitor["id"]
+                name = monitor["name"]
+                print(f"\n[Calibração] Monitor {mid+1} de {len(monitors)}: {name}")
+                print(f"[Calibração] Dispositivo: {monitor.get('device', '?')}")
 
-            for i, label in enumerate(POINT_LABELS):
-                px, py, nx, ny = _normalized_point_pos(monitor, i)
-                print(f"  → Ponto {i+1}/5: {label}")
+                src_points = []  # gaze normalizado
+                dst_points = []  # pixels absolutos
 
-                win = CalibrationWindow(monitor, i, f"{label} — Monitor: {name}")
-                win.wait_for_confirm()
+                for i, label in enumerate(POINT_LABELS):
+                    px, py, nx, ny = _normalized_point_pos(monitor, i)
+                    print(f"  → Ponto {i+1}/5: {label}")
 
-                # Coleta amostras
-                samples = []
-                deadline = time.time() + 1.0
-                while time.time() < deadline:
-                    g = gaze_tracker.get_gaze()
-                    if g is not None:
-                        samples.append(g)
-                    time.sleep(0.05)
+                    session.show_point(monitor, i, f"{label} — Monitor: {name}")
+                    session.wait_for_confirm()
 
-                if len(samples) < 2:
-                    print(f"  [AVISO] Poucas amostras ({len(samples)}) — rosto não detectado?")
-                    samples = [(0.5, 0.5)]
+                    # Coleta amostras por 1 segundo após confirmação
+                    samples = []
+                    deadline = time.time() + 1.0
+                    while time.time() < deadline:
+                        g = gaze_tracker.get_gaze()
+                        if g is not None:
+                            samples.append(g)
+                        time.sleep(0.05)
 
-                gx = sum(s[0] for s in samples) / len(samples)
-                gy = sum(s[1] for s in samples) / len(samples)
-                src_points.append([gx, gy])
-                dst_points.append([px, py])
-                print(f"  ✓ Gaze ({gx:.3f}, {gy:.3f}) → Pixel ({px}, {py})")
+                    if len(samples) < 2:
+                        print(f"  [AVISO] Poucas amostras ({len(samples)}) — câmera ou rosto não detectado?")
+                        samples = [(0.5, 0.5)]
 
-            src = np.float32(src_points)
-            dst = np.float32(dst_points)
-            H, _ = cv2.findHomography(src, dst)
-            self._homographies[mid] = H
-            print(f"[Calibração] Monitor {mid} calibrado.")
+                    gx = sum(s[0] for s in samples) / len(samples)
+                    gy = sum(s[1] for s in samples) / len(samples)
+                    src_points.append([gx, gy])
+                    dst_points.append([px, py])
+                    print(f"  ✓ Gaze ({gx:.3f}, {gy:.3f}) → Pixel ({px}, {py})")
+
+                src = np.float32(src_points)
+                dst = np.float32(dst_points)
+                H, _ = cv2.findHomography(src, dst)
+                self._homographies[mid] = H
+                print(f"[Calibração] Monitor {mid} calibrado.")
+
+                session.hide()
+
+        finally:
+            session.destroy()
 
         self.save(CALIBRATION_FILE)
         print(f"\n[Calibração] Salvo em {CALIBRATION_FILE}. Retomando tracking.")
