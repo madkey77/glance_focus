@@ -36,7 +36,14 @@ def main():
     print("[Glaze] Tracker iniciado.")
     print("[Glaze] Hotkeys: Ctrl+Alt+G=toggle | Ctrl+Alt+B=overlay | Ctrl+Alt+C=calibrar | Ctrl+Alt+Q=sair")
 
+    running = [True]
     tracking_enabled = True
+
+    def toggle_tracking():
+        nonlocal tracking_enabled
+        tracking_enabled = not tracking_enabled
+        state = "ON" if tracking_enabled else "OFF"
+        print(f"[Glaze] Tracking {state}")
 
     def do_calibrate():
         nonlocal tracking_enabled
@@ -45,21 +52,13 @@ def main():
         calibration.run_calibration(layout.monitors, tracker)
         tracking_enabled = True
 
+    def quit_app():
+        running[0] = False
+
     keyboard.add_hotkey("ctrl+alt+g", lambda: toggle_tracking())
     keyboard.add_hotkey("ctrl+alt+b", lambda: controller.toggle_overlay())
     keyboard.add_hotkey("ctrl+alt+c", lambda: do_calibrate())
     keyboard.add_hotkey("ctrl+alt+q", lambda: quit_app())
-
-    running = [True]
-
-    def toggle_tracking():
-        nonlocal tracking_enabled
-        tracking_enabled = not tracking_enabled
-        state = "ON" if tracking_enabled else "OFF"
-        print(f"[Glaze] Tracking {state}")
-
-    def quit_app():
-        running[0] = False
 
     # Loop principal
     while running[0]:

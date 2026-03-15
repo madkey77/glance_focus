@@ -176,6 +176,9 @@ class Calibration:
         except FileNotFoundError:
             print(f"[Calibração] {path} não encontrado — rode Ctrl+Alt+C para calibrar.")
             return False
+        except Exception as e:
+            print(f"[Calibração] Erro ao carregar {path}: {e} — rode Ctrl+Alt+C para calibrar.")
+            return False
 
     def is_calibrated(self):
         return len(self._homographies) > 0
