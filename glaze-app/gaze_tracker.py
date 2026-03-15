@@ -57,6 +57,12 @@ def _compute_head_rotation(landmarks, w, h, ref_container):
     _, vecs = np.linalg.eigh(cov)
     vecs = vecs[:, ::-1]
 
+    # Garante que Z (col 2) aponta para a câmera: componente Z deve ser negativo
+    # (câmera está na direção -Z do espaço de imagem MediaPipe).
+    # Sem isso, a PCA pode inverter o eixo entre sessões → pitch ~±180°.
+    if vecs[2, 2] > 0:
+        vecs[:, 2] *= -1
+
     if ref_container[0] is None:
         ref_container[0] = vecs.copy()
     else:
@@ -99,9 +105,9 @@ def _compute_gaze_direction(landmarks, R, w, h):
     if eye_width > 1e-6:
         offset /= eye_width
 
-    # Vetor base da cabeça: PCA Z aponta para a câmera (Z negativo em imagem),
-    # então R[:,2] já é o forward correto (sem negação)
-    head_forward = R[:, 2]
+    # R[:,2] aponta para a câmera (Z negativo garantido acima).
+    # head_forward = direção do olhar = oposto da câmera = -R[:,2]
+    head_forward = -R[:, 2]
 
     # Aplica rotações de yaw/pitch conforme offset da íris
     yaw   = -offset[0] * 0.8   # horizontal

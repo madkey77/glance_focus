@@ -61,6 +61,10 @@ def _compute_head_rotation(landmarks, w, h, ref_container):
     cov = pts.T @ pts
     _, vecs = np.linalg.eigh(cov)
     vecs = vecs[:, ::-1]
+    # Garante que Z (col 2) aponta para a câmera: componente Z deve ser negativo
+    if vecs[2, 2] > 0:
+        vecs[:, 2] *= -1
+
     if ref_container[0] is None:
         ref_container[0] = vecs.copy()
     else:
@@ -97,7 +101,7 @@ def _compute_gaze(landmarks, R, w, h):
     if eye_width > 1e-6:
         offset /= eye_width
 
-    head_forward = R[:, 2]
+    head_forward = -R[:, 2]
     yaw_iris   = -offset[0] * 0.8
     pitch_iris =  offset[1] * 0.8
     gaze = _rot_y(yaw_iris) @ _rot_x(pitch_iris) @ head_forward
