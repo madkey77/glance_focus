@@ -158,9 +158,9 @@ class _TkCalibrationSession:
         self._cmd_queue.put(("hide", ()))
 
     def destroy(self):
-        """Encerra a sessão Tkinter de forma segura (thread-safe)."""
-        self._cmd_queue.put(("destroy", ()))
-        self._thread.join(timeout=3)
+        """Esconde a janela e deixa a thread daemon morrer naturalmente.
+        Não chama root.destroy() de outra thread — causa Tcl_AsyncDelete."""
+        self._cmd_queue.put(("hide", ()))
 
 
 class Calibration:
