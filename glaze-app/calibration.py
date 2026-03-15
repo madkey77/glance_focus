@@ -37,16 +37,21 @@ def _normalized_point_pos(monitor, point_idx):
 class _TkCalibrationSession:
     """
     Gerencia a sessão Tkinter inteira para calibração em uma única thread dedicada.
-    Recebe comandos via fila (show_point, destroy) para evitar Tcl_AsyncDelete.
+    Todos os comandos Tk são executados via fila + root.after para evitar
+    Tcl_AsyncDelete (nunca chamamos Tk de outra thread).
+
+    Usa ENTER como confirmação (não SPACE) para não conflitar com o
+    hook global do `keyboard` que captura SPACE durante calibração.
     """
 
     def __init__(self):
         self._cmd_queue = queue.Queue()
         self._confirmed = threading.Event()
         self._ready = threading.Event()
+        self._pulse_active = False
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
-        self._ready.wait()  # espera Tk inicializar
+        self._ready.wait(timeout=5)
 
     def _run(self):
         import tkinter as tk
@@ -70,15 +75,16 @@ class _TkCalibrationSession:
                 cmd, args = self._cmd_queue.get_nowait()
                 if cmd == "show_point":
                     self._do_show_point(*args)
+                elif cmd == "hide":
+                    self._root.withdraw()
                 elif cmd == "destroy":
                     self._root.destroy()
-                    return
+                    return  # sai do mainloop via destroy
         except queue.Empty:
             pass
         self._root.after(50, self._process_queue)
 
     def _do_show_point(self, monitor, point_idx, label):
-        tk = self._tk
         root = self._root
         canvas = self._canvas
 
@@ -98,7 +104,7 @@ class _TkCalibrationSession:
         cy = int(ny * h)
 
         canvas.create_text(w//2, h-60,
-                           text="Olhe para o ponto e pressione SPACE",
+                           text="Olhe para o ponto e pressione ENTER para confirmar",
                            fill="white", font=("Arial", 16))
         canvas.create_text(w//2, h-30, text=label,
                            fill="#00FF88", font=("Arial", 12))
@@ -110,7 +116,10 @@ class _TkCalibrationSession:
         self._pulse_growing = [True]
         self._pulse_active = True
 
-        root.bind("<space>", self._on_space)
+        # ENTER em vez de SPACE — evita conflito com keyboard global
+        root.bind("<Return>", self._on_confirm)
+        root.bind("<KP_Enter>", self._on_confirm)
+
         self._animate_pulse(canvas)
 
     def _animate_pulse(self, canvas):
@@ -131,26 +140,27 @@ class _TkCalibrationSession:
                 self._pulse_growing[0] = True
         self._root.after(30, lambda: self._animate_pulse(canvas))
 
-    def _on_space(self, event):
+    def _on_confirm(self, event=None):
         self._pulse_active = False
         self._confirmed.set()
 
     def show_point(self, monitor, point_idx, label):
-        """Chamado da thread principal — enfileira o comando para a thread Tk."""
+        """Enfileira exibição de ponto (thread-safe)."""
         self._cmd_queue.put(("show_point", (monitor, point_idx, label)))
 
     def wait_for_confirm(self):
-        """Bloqueia até o usuário pressionar SPACE."""
+        """Bloqueia até o usuário pressionar ENTER."""
         self._confirmed.wait()
+        self._confirmed.clear()
 
     def hide(self):
-        """Esconde a janela (entre monitores)."""
-        self._root.after(0, self._root.withdraw)
+        """Esconde a janela (thread-safe)."""
+        self._cmd_queue.put(("hide", ()))
 
     def destroy(self):
-        """Encerra a sessão Tkinter."""
+        """Encerra a sessão Tkinter de forma segura (thread-safe)."""
         self._cmd_queue.put(("destroy", ()))
-        self._thread.join(timeout=2)
+        self._thread.join(timeout=3)
 
 
 class Calibration:
@@ -163,7 +173,6 @@ class Calibration:
         monitors: lista de dicts com left/top/right/bottom/id/name
         gaze_tracker: instância de GazeTracker com get_gaze()
         """
-        # Uma única sessão Tkinter para toda a calibração
         session = _TkCalibrationSession()
 
         try:
@@ -173,12 +182,12 @@ class Calibration:
                 print(f"\n[Calibração] Monitor {mid+1} de {len(monitors)}: {name}")
                 print(f"[Calibração] Dispositivo: {monitor.get('device', '?')}")
 
-                src_points = []  # gaze normalizado
-                dst_points = []  # pixels absolutos
+                src_points = []
+                dst_points = []
 
                 for i, label in enumerate(POINT_LABELS):
                     px, py, nx, ny = _normalized_point_pos(monitor, i)
-                    print(f"  → Ponto {i+1}/5: {label}")
+                    print(f"  → Ponto {i+1}/5: {label} — olhe para o ponto e pressione ENTER")
 
                     session.show_point(monitor, i, f"{label} — Monitor: {name}")
                     session.wait_for_confirm()
@@ -190,21 +199,29 @@ class Calibration:
                         g = gaze_tracker.get_gaze()
                         if g is not None:
                             samples.append(g)
-                        time.sleep(0.05)
+                        time.sleep(0.033)
 
-                    if len(samples) < 2:
-                        print(f"  [AVISO] Poucas amostras ({len(samples)}) — câmera ou rosto não detectado?")
+                    if len(samples) < 3:
+                        print(f"  [AVISO] Poucas amostras ({len(samples)}) — rosto não detectado?")
+                        print(f"  [AVISO] Verifique CAMERA_INDEX em config.py e iluminação.")
                         samples = [(0.5, 0.5)]
 
                     gx = sum(s[0] for s in samples) / len(samples)
                     gy = sum(s[1] for s in samples) / len(samples)
                     src_points.append([gx, gy])
-                    dst_points.append([px, py])
+                    dst_points.append([float(px), float(py)])
                     print(f"  ✓ Gaze ({gx:.3f}, {gy:.3f}) → Pixel ({px}, {py})")
 
                 src = np.float32(src_points)
                 dst = np.float32(dst_points)
-                H, _ = cv2.findHomography(src, dst)
+                H, mask = cv2.findHomography(src, dst, cv2.RANSAC)
+
+                if H is None:
+                    print(f"  [ERRO] Homografia falhou para monitor {mid} — pontos degenerados.")
+                    print(f"  [ERRO] Valores de gaze y={[round(p[1],3) for p in src_points]}")
+                    print(f"  [ERRO] Verifique se o tracker está detectando o rosto corretamente.")
+                    continue
+
                 self._homographies[mid] = H
                 print(f"[Calibração] Monitor {mid} calibrado.")
 
@@ -212,6 +229,10 @@ class Calibration:
 
         finally:
             session.destroy()
+
+        if not self._homographies:
+            print("[Calibração] Nenhum monitor foi calibrado com sucesso.")
+            return
 
         self.save(CALIBRATION_FILE)
         print(f"\n[Calibração] Salvo em {CALIBRATION_FILE}. Retomando tracking.")
@@ -228,7 +249,8 @@ class Calibration:
 
     def save(self, path=None):
         path = path or CALIBRATION_FILE
-        data = {str(k): v.tolist() for k, v in self._homographies.items()}
+        data = {str(k): v.tolist() for k, v in self._homographies.items()
+                if v is not None}
         with open(path, "w") as f:
             json.dump(data, f, indent=2)
 

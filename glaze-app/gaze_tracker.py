@@ -180,9 +180,12 @@ class GazeTracker:
             return self._gaze
 
     def _loop(self):
-        cap = cv2.VideoCapture(CAMERA_INDEX)
+        cap = cv2.VideoCapture(CAMERA_INDEX, cv2.CAP_DSHOW)
         cap.set(cv2.CAP_PROP_FRAME_WIDTH,  CAPTURE_WIDTH)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAPTURE_HEIGHT)
+
+        import time as _time
+        _start = _time.time()
 
         while self._running:
             ret, frame = cap.read()
@@ -194,7 +197,8 @@ class GazeTracker:
             # Nova API: converter para mp.Image e chamar detect_for_video
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
-            timestamp_ms = int(cap.get(cv2.CAP_PROP_POS_MSEC))
+            # CAP_PROP_POS_MSEC é sempre 0 em câmeras ao vivo — usar wall clock
+            timestamp_ms = int((_time.time() - _start) * 1000)
 
             result = self._detector.detect_for_video(mp_image, timestamp_ms)
 
