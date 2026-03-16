@@ -128,6 +128,10 @@ def main():
                     if abs_pos is None:
                         continue
                     ax, ay = abs_pos
+                    # Clamp cada eixo independentemente dentro dos bounds do monitor.
+                    # Isso permite deslizar na borda: ex. topo fixo mas X livre.
+                    ax = max(monitor["left"], min(monitor["right"]  - 1, ax))
+                    ay = max(monitor["top"],  min(monitor["bottom"] - 1, ay))
                     _last_abs = (ax, ay)
                     zone = layout.get_zone(ax, ay)
                     if zone is not None:
