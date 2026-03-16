@@ -502,6 +502,130 @@ class DesktopMap:
             self._visible = not self._visible
 
 
+class MouseHider:
+    """
+    Esconde o cursor do mouse após MOUSE_HIDE_DELAY_S segundos sem movimento.
+    Ao detectar movimento, teleporta o cursor para a posição atual do gaze
+    antes de torná-lo visível novamente.
+
+    Thread-safe: _lock protege todo o estado mutável.
+    pynput.mouse.Listener roda em sua própria thread daemon.
+    threading.Timer dispara _hide() em thread daemon separada.
+    """
+
+    def __init__(self, _listener_factory=None, _timer_factory=None):
+        from config import MOUSE_HIDE_DELAY_S
+        self._delay         = MOUSE_HIDE_DELAY_S
+        self._lock          = threading.Lock()
+        self._gaze_pos      = None   # None até set_gaze_pos ser chamado
+        self._hidden        = False
+        self._enabled       = False
+        self._timer         = None
+        self._listener      = None
+        self._timer_factory = _timer_factory if _timer_factory is not None else threading.Timer
+
+        factory = _listener_factory
+        if factory is None:
+            from pynput import mouse as _mouse
+            factory = _mouse.Listener
+
+        try:
+            self._listener = factory(on_move=self._on_move)
+            self._listener.start()
+        except Exception as e:
+            print(f"[MouseHider] Falha ao iniciar listener: {e} — desativado.")
+            self._enabled = False
+            self._listener = None
+            return
+
+        # Inicia habilitado
+        self._enabled = True
+        self._reset_timer()
+
+    # ── state mutators (all acquire _lock) ───────────────────────────────────
+
+    def _hide(self):
+        """Esconde cursor. Só chama ShowCursor(False) uma vez (_hidden guard)."""
+        import ctypes
+        with self._lock:
+            if self._hidden:
+                return
+            self._hidden = True
+        ctypes.windll.user32.ShowCursor(False)
+
+    def _show(self):
+        """Mostra cursor. Só chama ShowCursor(True) uma vez (_hidden guard)."""
+        import ctypes
+        with self._lock:
+            if not self._hidden:
+                return
+            self._hidden = False
+        ctypes.windll.user32.ShowCursor(True)
+
+    def _reset_timer(self):
+        """Cancela timer existente e agenda novo _hide após _delay segundos."""
+        with self._lock:
+            if self._timer is not None:
+                self._timer.cancel()
+            if not self._enabled:
+                return
+            t = self._timer_factory(self._delay, self._hide)
+            t.daemon = True
+            t.start()
+            self._timer = t
+
+    def _cancel_timer(self):
+        with self._lock:
+            if self._timer is not None:
+                self._timer.cancel()
+                self._timer = None
+
+    # ── pynput callback ───────────────────────────────────────────────────────
+
+    def _on_move(self, x, y):
+        """Chamado pelo pynput em qualquer movimento do mouse."""
+        import ctypes
+        with self._lock:
+            enabled = self._enabled
+            gaze    = self._gaze_pos
+        if not enabled:
+            return
+        # Teleporta para o gaze ANTES de mostrar (evita flicker na posição antiga)
+        if gaze is not None:
+            ctypes.windll.user32.SetCursorPos(gaze[0], gaze[1])
+        self._show()
+        self._reset_timer()
+
+    # ── public interface ──────────────────────────────────────────────────────
+
+    def set_gaze_pos(self, ax: int, ay: int) -> None:
+        """Atualiza posição do gaze. Chamado a cada frame quando gaze é válido."""
+        with self._lock:
+            self._gaze_pos = (ax, ay)
+
+    def set_enabled(self, enabled: bool) -> None:
+        """Habilita/desabilita. Idempotente. Desabilitar restaura cursor e cancela timer."""
+        with self._lock:
+            if self._enabled == enabled:
+                return
+            self._enabled = enabled
+        if not enabled:
+            self._cancel_timer()
+            self._show()
+        else:
+            self._reset_timer()
+
+    def stop(self) -> None:
+        """Restaura cursor e para listener. Chamado no encerramento do app."""
+        self._cancel_timer()
+        self._show()
+        if self._listener is not None:
+            try:
+                self._listener.stop()
+            except Exception:
+                pass
+
+
 class FocusController:
     def __init__(self, layout):
         """
