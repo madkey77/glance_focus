@@ -87,19 +87,23 @@ def main():
         tracking_enabled[0] = not tracking_enabled[0]
         state = "ON" if tracking_enabled[0] else "OFF"
         print(f"[Glaze] Tracking {state}")
-        controller.mouse_hider.set_enabled(tracking_enabled[0])
+        if controller.mouse_hider is not None:
+            controller.mouse_hider.set_enabled(tracking_enabled[0])
 
     def do_calibrate():
         tracking_enabled[0] = False
-        controller.mouse_hider.set_enabled(False)
+        if controller.mouse_hider is not None:
+            controller.mouse_hider.set_enabled(False)
         print("[Glaze] Iniciando calibração...")
         calibration.run_calibration(layout.monitors, tracker)
         tracking_enabled[0] = True
-        controller.mouse_hider.set_enabled(True)
+        if controller.mouse_hider is not None:
+            controller.mouse_hider.set_enabled(True)
 
     def quit_app():
         running[0] = False
-        controller.mouse_hider.stop()
+        if controller.mouse_hider is not None:
+            controller.mouse_hider.stop()
 
     listener = _make_hotkey_listener({
         "toggle":    toggle_tracking,

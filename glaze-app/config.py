@@ -20,4 +20,5 @@ SWEEP_SPEED       = 0.08   # normalized units/second — ball speed
 SWEEP_ROWS        = 5      # number of horizontal rows
 SWEEP_MIN_SAMPLES = 30     # minimum valid samples to attempt poly fit
 
+MOUSE_HIDE_ENABLED = False  # feature flag — hide cursor after inactivity
 MOUSE_HIDE_DELAY_S = 2.0   # seconds of inactivity before cursor hides

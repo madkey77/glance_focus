@@ -522,6 +522,7 @@ class MouseHider:
         self._enabled       = False
         self._timer         = None
         self._listener      = None
+        self._teleporting   = False  # True enquanto SetCursorPos está em execução — evita loop
         self._timer_factory = _timer_factory if _timer_factory is not None else threading.Timer
 
         factory = _listener_factory
@@ -586,13 +587,19 @@ class MouseHider:
         """Chamado pelo pynput em qualquer movimento do mouse."""
         import ctypes
         with self._lock:
-            enabled = self._enabled
-            gaze    = self._gaze_pos
-        if not enabled:
+            enabled      = self._enabled
+            gaze         = self._gaze_pos
+            teleporting  = self._teleporting
+        if not enabled or teleporting:
             return
-        # Teleporta para o gaze ANTES de mostrar (evita flicker na posição antiga)
+        # Teleporta para o gaze ANTES de mostrar (evita flicker na posição antiga).
+        # Usa _teleporting para suprimir o _on_move gerado pelo próprio SetCursorPos.
         if gaze is not None:
+            with self._lock:
+                self._teleporting = True
             ctypes.windll.user32.SetCursorPos(gaze[0], gaze[1])
+            with self._lock:
+                self._teleporting = False
         self._show()
         self._reset_timer()
 
@@ -640,7 +647,8 @@ class FocusController:
         self._fps               = 0.0
         self._last_frame_time   = None
         self._last_valid_pos    = None  # última (ax, ay) válida — usada quando gaze sai do range
-        self.mouse_hider = MouseHider()
+        from config import MOUSE_HIDE_ENABLED
+        self.mouse_hider = MouseHider() if MOUSE_HIDE_ENABLED else None
 
     def update(self, zone, dominant_window, ax=None, ay=None):
         """
@@ -671,7 +679,7 @@ class FocusController:
         self._last_valid_pos = (ax, ay)
         self.gaze_dot.set_position(ax, ay)
         self.desktop_map.set_gaze(ax, ay)
-        if ax is not None and ay is not None:
+        if ax is not None and ay is not None and self.mouse_hider is not None:
             self.mouse_hider.set_gaze_pos(ax, ay)
 
         if dominant_window is None:
@@ -684,7 +692,15 @@ class FocusController:
                 self._current_hwnd = hwnd
                 _force_foreground(hwnd)
                 self.overlay.set_target(hwnd)
-                print(f"[Glaze] Foco → {dominant_window['title']}")
+                try:
+                    import win32gui
+                    rect = win32gui.GetWindowRect(hwnd)
+                    w = rect[2] - rect[0]
+                    h = rect[3] - rect[1]
+                    cls = win32gui.GetClassName(hwnd)
+                    print(f"[Glaze] Foco → '{dominant_window['title']}' hwnd={hwnd} class={cls} pos=({rect[0]},{rect[1]}) size={w}x{h}")
+                except Exception:
+                    print(f"[Glaze] Foco → '{dominant_window['title']}' hwnd={hwnd}")
             # Feedback visual: anel sólido por 500ms + atualiza status do mapa
             self.gaze_dot.set_stable(True)
             self.desktop_map.set_info(zone, dominant_window["title"], self._fps)
