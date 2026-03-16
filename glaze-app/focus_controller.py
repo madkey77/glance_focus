@@ -640,6 +640,7 @@ class FocusController:
         self._fps               = 0.0
         self._last_frame_time   = None
         self._last_valid_pos    = None  # última (ax, ay) válida — usada quando gaze sai do range
+        self.mouse_hider = MouseHider()
 
     def update(self, zone, dominant_window, ax=None, ay=None):
         """
@@ -670,6 +671,8 @@ class FocusController:
         self._last_valid_pos = (ax, ay)
         self.gaze_dot.set_position(ax, ay)
         self.desktop_map.set_gaze(ax, ay)
+        if ax is not None and ay is not None:
+            self.mouse_hider.set_gaze_pos(ax, ay)
 
         if dominant_window is None:
             return
