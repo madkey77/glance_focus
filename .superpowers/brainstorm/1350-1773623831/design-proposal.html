@@ -1,0 +1,38 @@
+<h2>Proposta de Design — Overlay Visual</h2>
+<p class="subtitle">Revise e aprove antes de partir para implementação</p>
+
+<div class="section">
+  <h3>1. Ponto de gaze pulsante</h3>
+  <p>Uma janela Tkinter transparente extra (separada da borda de foco atual) exibe um anel animado na posição absoluta do gaze no monitor ativo. O anel pulsa continuamente enquanto o gaze está em movimento. Ao estabilizar (saccade confirmado), a animação para e o anel fica sólido por ~500ms antes de retomar. Tamanho: anel externo ~24px, ponto central 8px, cor branca com borda escura para contraste em qualquer fundo.</p>
+</div>
+
+<div class="section">
+  <h3>2. Bordas coloridas por janela</h3>
+  <p>O <code>OverlayBorder</code> atual usa sempre <code>#00FF88</code>. A nova versão atribui uma cor de uma paleta fixa a cada <code>hwnd</code> (mapeamento persistente enquanto o app roda). Paleta sugerida: 6–8 cores vivas distintas (verde, ciano, amarelo, laranja, magenta, azul, vermelho, branco). Quando uma nova janela recebe foco, ela herda a próxima cor da paleta ou reutiliza a cor já atribuída a ela.</p>
+</div>
+
+<div class="section">
+  <h3>3. Mapa do desktop (HUD — canto inferior esquerdo)</h3>
+  <p>Uma terceira janela Tkinter transparente, fixada no canto inferior esquerdo do monitor primário. Tamanho fixo ~260×140px. Mostra uma miniatura proporcional do desktop virtual (todos os monitores), com as zonas desenhadas como retângulos e um ponto indicando o gaze atual. Ativado/desativado junto com o overlay principal (Ctrl+Alt+B). Atualiza a ~10fps (não precisa de 30fps).</p>
+  <div style="background:#111; border-radius:6px; padding:1rem; margin-top:0.75rem; font-family:monospace; font-size:0.8rem; color:#aaa;">
+    <div style="border:1px solid #333; padding:0.5rem; border-radius:4px; position:relative; height:80px;">
+      <div style="position:absolute; left:5%; top:10%; width:42%; height:80%; border:1px solid #555; border-radius:2px; display:flex; align-items:center; justify-content:center; font-size:0.7rem; color:#555;">MON 0</div>
+      <div style="position:absolute; left:50%; top:10%; width:42%; height:80%; border:1px solid #555; border-radius:2px; display:flex; align-items:center; justify-content:center; font-size:0.7rem; color:#555;">MON 1</div>
+      <div style="position:absolute; left:28%; top:35%; width:8px; height:8px; border-radius:50%; background:#fff; border:1px solid #000;"></div>
+    </div>
+    <div style="margin-top:0.5rem; color:#666;">gaze=(0.52, 0.48) | zona=M0-Q1 | Chrome | 29fps</div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Arquitetura</h3>
+  <ul>
+    <li><strong>GazeDot</strong> — nova classe em <code>focus_controller.py</code>, janela Tkinter própria, recebe (ax, ay) absoluto</li>
+    <li><strong>OverlayBorder</strong> — refatorado para suportar paleta de cores por hwnd</li>
+    <li><strong>DesktopMap</strong> — nova classe em <code>focus_controller.py</code>, janela Tkinter no canto inferior esquerdo</li>
+    <li><code>FocusController.update()</code> passa gaze absoluto para GazeDot e DesktopMap a cada frame</li>
+    <li>Ctrl+Alt+B liga/desliga os três componentes juntos</li>
+  </ul>
+</div>
+
+<p class="subtitle" style="margin-top:1.5rem">Tudo certo? Responda no terminal para aprovar ou pedir ajustes.</p>

@@ -1,0 +1,48 @@
+<h2>O que o HUD deve mostrar?</h2>
+<p class="subtitle">Selecione todos os elementos que quer ver no painel (multi-seleção)</p>
+
+<div class="options" data-multiselect>
+
+  <div class="option" data-choice="gaze-dot" onclick="toggleSelect(this)">
+    <div class="letter">1</div>
+    <div class="content">
+      <h3>Ponto de gaze na tela</h3>
+      <p>Círculo/cursor visível no monitor, na posição estimada do olhar (desenha direto no overlay Tkinter, não no HUD)</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="camera-thumb" onclick="toggleSelect(this)">
+    <div class="letter">2</div>
+    <div class="content">
+      <h3>Miniatura da câmera</h3>
+      <p>Frame ao vivo da webcam reduzido (ex: 160×120px) com landmarks do rosto desenhados</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="screen-map" onclick="toggleSelect(this)">
+    <div class="letter">3</div>
+    <div class="content">
+      <h3>Mapa do desktop</h3>
+      <p>Miniatura mostrando todos os monitores + zonas + ponto indicando onde o gaze está apontando</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="text-info" onclick="toggleSelect(this)">
+    <div class="letter">4</div>
+    <div class="content">
+      <h3>Info de texto</h3>
+      <p>Linha de status: zona atual, janela em foco, gaze normalizado (x, y), FPS do tracker</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="window-colors" onclick="toggleSelect(this)">
+    <div class="letter">5</div>
+    <div class="content">
+      <h3>Bordas coloridas por janela</h3>
+      <p>Cada janela contornada recebe uma cor diferente (não só verde fixo) — legenda de cores no HUD</p>
+    </div>
+  </div>
+
+</div>
+
+<p class="subtitle" style="margin-top:1.5rem">Pode selecionar vários — <strong>http://localhost:51269</strong></p>

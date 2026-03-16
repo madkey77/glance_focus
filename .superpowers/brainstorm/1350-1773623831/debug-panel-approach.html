@@ -1,0 +1,42 @@
+<h2>Como você quer o painel de debug visual?</h2>
+<p class="subtitle">Escolha a abordagem que faz mais sentido para o seu fluxo de uso</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Janela separada (estilo diag_camera.py)</h3>
+      <p>Uma janela OpenCV/cv2 flutuante que mostra a câmera ao vivo com overlays desenhados: ponto de gaze, landmarks, miniaturas das telas. Ativada por hotkey (ex: Ctrl+Alt+D). Independente do overlay de bordas.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Prós</h4><ul><li>Não interfere na tela principal</li><li>Familiar (igual ao diag_camera.py)</li><li>Pode mostrar câmera + mapa de telas lado a lado</li></ul></div>
+        <div class="cons"><h4>Contras</h4><ul><li>Ocupa espaço de tela</li><li>Thread extra cv2</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>HUD no canto da tela (overlay Tkinter)</h3>
+      <p>Um painel semi-transparente fixo num canto do monitor mostrando: miniatura da câmera (pequena), mapa do desktop com ponto de gaze indicado, e info de texto (zona, janela, fps). Integrado ao overlay existente.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Prós</h4><ul><li>Sempre visível sem mudar foco</li><li>Reusa a infraestrutura Tkinter já existente</li></ul></div>
+        <div class="cons"><h4>Contras</h4><ul><li>Tkinter tem limitações para vídeo ao vivo (frames de câmera)</li><li>Pode sobrepor conteúdo</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Híbrido: HUD Tkinter + câmera OpenCV separada</h3>
+      <p>O overlay Tkinter existente ganha: ponto de gaze visível na tela (círculo pulsante no monitor ativo) + bordas coloridas por janela. Uma janela OpenCV opcional (Ctrl+Alt+D) mostra câmera ao vivo + mapa de miniaturas quando precisar depurar.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Prós</h4><ul><li>Melhor dos dois mundos</li><li>Ponto de gaze sempre visível sem precisar abrir debug</li><li>Câmera/mapa só quando necessário</li></ul></div>
+        <div class="cons"><h4>Contras</h4><ul><li>Mais código</li></ul></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p class="subtitle" style="margin-top:2rem">Abra <strong>http://localhost:51269</strong> no seu navegador para interagir</p>

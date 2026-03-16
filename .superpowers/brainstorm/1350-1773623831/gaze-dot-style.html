@@ -1,0 +1,46 @@
+<h2>Como o ponto de gaze deve aparecer?</h2>
+<p class="subtitle">Círculo desenhado no overlay Tkinter, na posição estimada do olhar no monitor</p>
+
+<div class="options">
+
+  <div class="option" data-choice="dot-simple" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Ponto simples</h3>
+      <p>Círculo sólido pequeno (~12px), cor fixa (branco ou verde). Segue o gaze em tempo real sem suavização extra visual.</p>
+      <div style="display:flex; gap:1rem; margin-top:0.75rem; align-items:center;">
+        <div style="width:12px;height:12px;border-radius:50%;background:#00FF88;flex-shrink:0;"></div>
+        <span style="color:#888;font-size:0.85rem">Simples, sem distração</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="dot-ring" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Anel com ponto central</h3>
+      <p>Círculo interno (6px) + anel externo (~20px) semi-transparente. Mais fácil de localizar na tela cheia.</p>
+      <div style="display:flex; gap:1rem; margin-top:0.75rem; align-items:center;">
+        <div style="width:20px;height:20px;border-radius:50%;border:2px solid #00FF88;background:transparent;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <div style="width:6px;height:6px;border-radius:50%;background:#00FF88;"></div>
+        </div>
+        <span style="color:#888;font-size:0.85rem">Fácil de encontrar visualmente</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="dot-pulse" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Ponto pulsante (animado)</h3>
+      <p>Anel que expande e some em loop (~1s). Quando o gaze estabiliza numa zona, o pulso para — indicando que o saccade foi confirmado.</p>
+      <div style="display:flex; gap:1rem; margin-top:0.75rem; align-items:center;">
+        <div style="width:20px;height:20px;border-radius:50%;border:2px solid #00FF88;animation: none;opacity:0.6;flex-shrink:0;"></div>
+        <span style="color:#888;font-size:0.85rem">Feedback visual de estabilização</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<p class="subtitle" style="margin-top:1.5rem"><strong>http://localhost:51269</strong></p>

@@ -1,1 +1,8 @@
 .worktrees/
+glaze-app/.venv/
+glaze-app/__pycache__/
+glaze-app/tests/__pycache__/
+glaze-app/calibration.json
+glaze-app/face_landmarker.task
+glaze-app/debug_screenshot_*.png
+img_tests/

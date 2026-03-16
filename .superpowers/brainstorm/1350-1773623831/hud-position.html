@@ -1,0 +1,70 @@
+<h2>Onde o HUD deve ficar na tela?</h2>
+<p class="subtitle">Painel semi-transparente com câmera, mapa de telas e info de gaze</p>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 1rem;">
+
+  <div class="card" data-choice="top-right" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#1a1a2e; padding:1rem; height:160px; position:relative; border-radius:6px;">
+      <!-- Monitor mockup -->
+      <div style="width:100%; height:100%; border:2px solid #444; border-radius:4px; position:relative; background:#111;">
+        <!-- HUD top-right -->
+        <div style="position:absolute; top:4px; right:4px; width:80px; height:60px; background:#00FF88; opacity:0.85; border-radius:3px; display:flex; align-items:center; justify-content:center; font-size:9px; color:#000; font-weight:bold;">HUD</div>
+        <!-- Windows -->
+        <div style="position:absolute; left:8px; top:8px; width:55%; height:55%; background:#2a2a4a; border-radius:2px;"></div>
+        <div style="position:absolute; left:8px; top:calc(55% + 12px); width:40%; height:30%; background:#2a2a4a; border-radius:2px;"></div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Canto superior direito</h3>
+      <p>Longe da taskbar, fácil de ignorar</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="top-left" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#1a1a2e; padding:1rem; height:160px; position:relative; border-radius:6px;">
+      <div style="width:100%; height:100%; border:2px solid #444; border-radius:4px; position:relative; background:#111;">
+        <!-- HUD top-left -->
+        <div style="position:absolute; top:4px; left:4px; width:80px; height:60px; background:#00FF88; opacity:0.85; border-radius:3px; display:flex; align-items:center; justify-content:center; font-size:9px; color:#000; font-weight:bold;">HUD</div>
+        <div style="position:absolute; right:8px; top:8px; width:45%; height:55%; background:#2a2a4a; border-radius:2px;"></div>
+        <div style="position:absolute; right:8px; top:calc(55% + 12px); width:45%; height:30%; background:#2a2a4a; border-radius:2px;"></div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Canto superior esquerdo</h3>
+      <p>Visível mas pode conflitar com apps</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="bottom-right" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#1a1a2e; padding:1rem; height:160px; position:relative; border-radius:6px;">
+      <div style="width:100%; height:100%; border:2px solid #444; border-radius:4px; position:relative; background:#111;">
+        <!-- HUD bottom-right -->
+        <div style="position:absolute; bottom:4px; right:4px; width:80px; height:60px; background:#00FF88; opacity:0.85; border-radius:3px; display:flex; align-items:center; justify-content:center; font-size:9px; color:#000; font-weight:bold;">HUD</div>
+        <div style="position:absolute; left:8px; top:8px; width:55%; height:55%; background:#2a2a4a; border-radius:2px;"></div>
+        <div style="position:absolute; left:8px; top:calc(55% + 12px); width:40%; height:30%; background:#2a2a4a; border-radius:2px;"></div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Canto inferior direito</h3>
+      <p>Perto da taskbar — pode sobrepor notificações</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="bottom-left" onclick="toggleSelect(this)">
+    <div class="card-image" style="background:#1a1a2e; padding:1rem; height:160px; position:relative; border-radius:6px;">
+      <div style="width:100%; height:100%; border:2px solid #444; border-radius:4px; position:relative; background:#111;">
+        <!-- HUD bottom-left -->
+        <div style="position:absolute; bottom:4px; left:4px; width:80px; height:60px; background:#00FF88; opacity:0.85; border-radius:3px; display:flex; align-items:center; justify-content:center; font-size:9px; color:#000; font-weight:bold;">HUD</div>
+        <div style="position:absolute; right:8px; top:8px; width:45%; height:55%; background:#2a2a4a; border-radius:2px;"></div>
+        <div style="position:absolute; right:8px; top:calc(55% + 12px); width:45%; height:30%; background:#2a2a4a; border-radius:2px;"></div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Canto inferior esquerdo</h3>
+      <p>Opção neutra, longe de notificações</p>
+    </div>
+  </div>
+
+</div>
+
+<p class="subtitle" style="margin-top:1.5rem">Clique na opção ou responda no terminal — <strong>http://localhost:51269</strong></p>
