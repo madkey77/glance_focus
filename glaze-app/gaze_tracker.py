@@ -15,7 +15,7 @@ from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision as mp_vision
 import math
 import threading
-from config import CAMERA_INDEX, CAPTURE_WIDTH, CAPTURE_HEIGHT
+from config import CAMERA_INDEX, CAPTURE_WIDTH, CAPTURE_HEIGHT, GAZE_PITCH_IRIS_WEIGHT, GAZE_Y_RANGE_DEG
 
 MODEL_PATH = "face_landmarker.task"
 SACCADE_THRESHOLD = 0.04  # velocidade mínima (norm/frame) para detectar saccade
@@ -122,8 +122,8 @@ def _compute_gaze(landmarks, face_matrix, w, h):
 
     # Aplica rotação de yaw/pitch pelo offset da íris sobre head_forward
     # Sensibilidade: 1.5 é mais responsivo que 0.8 para movimentos sutis dos olhos
-    yaw_iris   =  offset[0] * 0.75
-    pitch_iris =  offset[1] * 0.75
+    yaw_iris   =  offset[0] * 1.4
+    pitch_iris =  offset[1] * GAZE_PITCH_IRIS_WEIGHT
 
     # Matrizes de rotação 3D
     def rot_x(a):
@@ -249,9 +249,9 @@ class GazeTracker:
             yaw   -= self._calib_yaw
             pitch -= self._calib_pitch
 
-            # Normaliza: range ±45° horizontal, ±35° vertical
-            x_norm = max(0.0, min(1.0, 0.5 + yaw   / math.radians(90)))
-            y_norm = max(0.0, min(1.0, 0.5 + pitch  / math.radians(70)))
+            # Normaliza: range ±75° horizontal, ±65° vertical (rosto menos sensível)
+            x_norm = max(0.0, min(1.0, 0.5 + yaw   / math.radians(150)))
+            y_norm = max(0.0, min(1.0, 0.5 + pitch  / math.radians(GAZE_Y_RANGE_DEG)))
 
             # Saccade detection: se velocidade exceder threshold, passa bruto e
             # reseta os filtros para evitar que puxem o gaze de volta ao valor antigo.
