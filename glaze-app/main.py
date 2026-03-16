@@ -122,26 +122,29 @@ def main():
             if gaze is not None:
                 gx, gy = gaze
                 _found = False
-                _last_abs = None
+                _best_clamped = None   # (ax, ay, dist²) — fallback se gaze fora de todos os monitores
                 for monitor in layout.monitors:
                     abs_pos = calibration.apply(monitor["id"], gx, gy)
                     if abs_pos is None:
                         continue
                     ax, ay = abs_pos
-                    # Clamp cada eixo independentemente dentro dos bounds do monitor.
-                    # Isso permite deslizar na borda: ex. topo fixo mas X livre.
-                    ax = max(monitor["left"], min(monitor["right"]  - 1, ax))
-                    ay = max(monitor["top"],  min(monitor["bottom"] - 1, ay))
-                    _last_abs = (ax, ay)
                     zone = layout.get_zone(ax, ay)
                     if zone is not None:
+                        # Gaze dentro deste monitor — usa direto
                         dominant = mapper.get_dominant(zone)
                         controller.update(zone, dominant, ax, ay)
                         _found = True
                         break
+                    # Fora deste monitor — guarda versão clamped como fallback
+                    cax = max(monitor["left"], min(monitor["right"]  - 1, ax))
+                    cay = max(monitor["top"],  min(monitor["bottom"] - 1, ay))
+                    dist2 = (ax - cax) ** 2 + (ay - cay) ** 2
+                    if _best_clamped is None or dist2 < _best_clamped[2]:
+                        _best_clamped = (cax, cay, dist2)
                 if not _found:
-                    # Passa coordenadas mesmo sem zona para o overlay congelar na borda
-                    lax, lay = _last_abs if _last_abs else (None, None)
+                    # Gaze fora de todos os monitores — clamp no monitor mais próximo
+                    # para permitir deslizar na borda (eixo livre, eixo fora = fixo na borda)
+                    lax, lay = (_best_clamped[0], _best_clamped[1]) if _best_clamped else (None, None)
                     controller.update(None, None, lax, lay)
             else:
                 controller.update(None, None)
