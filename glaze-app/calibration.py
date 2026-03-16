@@ -75,6 +75,7 @@ class _TkCalibrationSession:
         self._cmd_queue = queue.Queue()
         self._confirmed = threading.Event()
         self._start_event = threading.Event()
+        self._sweep_skip = threading.Event()
         self._ready = threading.Event()
         self._pulse_active = False
         self._thread = threading.Thread(target=self._run, daemon=True)
@@ -107,6 +108,12 @@ class _TkCalibrationSession:
                     self._do_show_val_point(*args)
                 elif cmd == "progress":
                     self._do_update_progress(*args)
+                elif cmd == "show_sweep":
+                    self._do_show_sweep(*args)
+                elif cmd == "sweep_ball":
+                    self._do_sweep_ball(*args)
+                elif cmd == "sweep_done":
+                    self._root.withdraw()
                 elif cmd == "hide":
                     self._root.withdraw()
                 elif cmd == "destroy":
@@ -276,6 +283,73 @@ class _TkCalibrationSession:
         self._pulse_active = False
         self._confirmed.set()
 
+    def _do_show_sweep(self, monitor, label):
+        """Shows sweep intro screen. ENTER starts, ESC skips."""
+        root = self._root
+        canvas = self._canvas
+
+        l, t = monitor["left"], monitor["top"]
+        w = monitor["right"] - l
+        h = monitor["bottom"] - t
+        root.geometry(f"{w}x{h}+{l}+{t}")
+        root.deiconify()
+        root.lift()
+        root.focus_force()
+
+        canvas.configure(width=w, height=h)
+        canvas.delete("all")
+
+        canvas.create_text(w // 2, h // 2 - 30,
+                           text="Fase de varredura — siga a bolinha com os olhos.",
+                           fill="white", font=("Arial", 18))
+        canvas.create_text(w // 2, h // 2 + 10,
+                           text="ENTER para iniciar  |  ESC para pular",
+                           fill="#888888", font=("Arial", 14))
+        canvas.create_text(w // 2, h // 2 + 50,
+                           text=label, fill="#00FF88", font=("Arial", 12))
+
+        # Barra de progresso (começa vazia, preenchida por sweep_ball)
+        bar_w, bar_h = 400, 12
+        bx = w // 2 - bar_w // 2
+        by = h - 60
+        canvas.create_rectangle(bx, by, bx + bar_w, by + bar_h,
+                                 outline="#555555", fill="#222222")
+        self._bar_rect = canvas.create_rectangle(bx, by, bx, by + bar_h,
+                                                  outline="", fill="#00FF88")
+        self._bar_bx = bx
+        self._bar_w  = bar_w
+        self._bar_by = by
+        self._bar_h  = bar_h
+
+        self._sweep_skip.clear()
+        self._start_event.clear()
+        self._pulse_active = False  # no pulsing dot until sweep starts
+
+        root.bind("<Return>",   self._on_sweep_start)
+        root.bind("<KP_Enter>", self._on_sweep_start)
+        root.bind("<Escape>",   self._on_sweep_skip)
+
+    def _on_sweep_start(self, event=None):
+        self._start_event.set()
+
+    def _on_sweep_skip(self, event=None):
+        self._sweep_skip.set()
+        self._start_event.set()  # unblocks wait_for_start if waiting
+
+    def _do_sweep_ball(self, px, py, progress):
+        """Moves ball to absolute position (px, py) and updates progress bar."""
+        canvas = self._canvas
+        canvas.delete("sweep_dot")
+        r = 18
+        canvas.create_oval(px - r, py - r, px + r, py + r,
+                           fill="#00FF88", outline="white", width=2,
+                           tags="sweep_dot")
+        # Update progress bar
+        fill_w = int(self._bar_w * min(1.0, max(0.0, progress)))
+        canvas.coords(self._bar_rect,
+                      self._bar_bx, self._bar_by,
+                      self._bar_bx + fill_w, self._bar_by + self._bar_h)
+
     def show_point(self, monitor, point_idx, label):
         """Enfileira exibição de ponto (thread-safe)."""
         self._start_event.clear()
@@ -304,6 +378,27 @@ class _TkCalibrationSession:
         """Esconde a janela e deixa a thread daemon morrer naturalmente.
         Não chama root.destroy() de outra thread — causa Tcl_AsyncDelete."""
         self._cmd_queue.put(("hide", ()))
+
+    def show_sweep(self, monitor, label):
+        """Enfileira tela de introdução da varredura (thread-safe)."""
+        self._cmd_queue.put(("show_sweep", (monitor, label)))
+
+    def sweep_ball(self, px, py, progress):
+        """Move a bolinha para (px, py) e atualiza progresso (thread-safe)."""
+        self._cmd_queue.put(("sweep_ball", (px, py, progress)))
+
+    def sweep_done(self):
+        """Esconde o canvas ao fim da varredura (thread-safe)."""
+        self._cmd_queue.put(("sweep_done", ()))
+
+    def wait_for_sweep_start(self):
+        """Bloqueia até ENTER ou ESC na tela de intro da varredura."""
+        self._start_event.wait()
+        self._start_event.clear()
+
+    def sweep_skipped(self):
+        """Retorna True se o usuário pressionou ESC."""
+        return self._sweep_skip.is_set()
 
 
 class Calibration:
