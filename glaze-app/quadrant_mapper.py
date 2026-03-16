@@ -30,7 +30,8 @@ def find_dominant_window(zone, windows):
     return best if area > 0 else None
 
 
-_IGNORED_CLASSES = {"TkTopLevel", "Tk", "Progman", "WorkerW", "Shell_TrayWnd"}
+_IGNORED_CLASSES = {"TkTopLevel", "Tk", "Progman", "WorkerW", "Shell_TrayWnd",
+                    "Windows.UI.Core.CoreWindow"}  # apps UWP fantasma (Settings, etc.)
 _IGNORED_TITLES = {"tk", "Program Manager", "Windows Input Experience"}
 
 
