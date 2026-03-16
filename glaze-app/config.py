@@ -4,7 +4,7 @@ CAMERA_INDEX = 0
 CAPTURE_WIDTH = 480
 CAPTURE_HEIGHT = 360
 
-SACCADE_STABLE_MS = 150       # ms de estabilidade para confirmar saccade
+SACCADE_STABLE_MS = 200       # ms de estabilidade para confirmar saccade
 GAZE_SMOOTH_FRAMES = 10       # janela do filtro de média móvel
 ZONE_LAYOUT = "2x2"           # "2x2" | "4x1" | "1x4"
 QUADRANT_UPDATE_MS = 500      # frequência de atualização das janelas dominantes

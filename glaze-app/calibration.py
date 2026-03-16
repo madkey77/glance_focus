@@ -11,6 +11,9 @@ import numpy as np
 import cv2
 from config import CALIBRATION_FILE, CALIBRATION_SAMPLES
 
+# Segundos de coleta antes de liberar o ENTER
+_COLLECT_SECS = 2.0
+
 
 # Ordem dos pontos: centro, top-left, top-right, bottom-left, bottom-right
 POINT_LABELS = ["Centro", "Canto superior esquerdo", "Canto superior direito",
@@ -40,8 +43,7 @@ class _TkCalibrationSession:
     Todos os comandos Tk são executados via fila + root.after para evitar
     Tcl_AsyncDelete (nunca chamamos Tk de outra thread).
 
-    Usa ENTER como confirmação (não SPACE) para não conflitar com o
-    hook global do `keyboard` que captura SPACE durante calibração.
+    Confirmação via ENTER ou SPACE.
     """
 
     def __init__(self):
@@ -75,6 +77,8 @@ class _TkCalibrationSession:
                 cmd, args = self._cmd_queue.get_nowait()
                 if cmd == "show_point":
                     self._do_show_point(*args)
+                elif cmd == "progress":
+                    self._do_update_progress(*args)
                 elif cmd == "hide":
                     self._root.withdraw()
                 elif cmd == "destroy":
@@ -104,10 +108,23 @@ class _TkCalibrationSession:
         cy = int(ny * h)
 
         canvas.create_text(w//2, h-60,
-                           text="Olhe para o ponto e pressione ENTER para confirmar",
+                           text="Olhe para o ponto — aguarde a barra encher e confirme com ENTER",
                            fill="white", font=("Arial", 16))
         canvas.create_text(w//2, h-30, text=label,
                            fill="#00FF88", font=("Arial", 12))
+
+        # Barra de progresso de coleta
+        bar_w, bar_h = 300, 16
+        bx = w // 2 - bar_w // 2
+        by = h - 90
+        canvas.create_rectangle(bx, by, bx + bar_w, by + bar_h,
+                                 outline="#555555", fill="#222222", tags="bar_bg")
+        self._bar_rect = canvas.create_rectangle(bx, by, bx, by + bar_h,
+                                                  outline="", fill="#00FF88", tags="bar_fill")
+        self._bar_bx = bx
+        self._bar_w  = bar_w
+        self._bar_by = by
+        self._bar_h  = bar_h
 
         self._confirmed.clear()
         self._pulse_cx = cx
@@ -115,10 +132,11 @@ class _TkCalibrationSession:
         self._pulse_r = [20]
         self._pulse_growing = [True]
         self._pulse_active = True
+        self._collect_ready = False
 
-        # ENTER em vez de SPACE — evita conflito com keyboard global
         root.bind("<Return>", self._on_confirm)
         root.bind("<KP_Enter>", self._on_confirm)
+        root.bind("<space>", self._on_confirm)
 
         self._animate_pulse(canvas)
 
@@ -128,7 +146,8 @@ class _TkCalibrationSession:
         canvas.delete("dot")
         r = self._pulse_r[0]
         cx, cy = self._pulse_cx, self._pulse_cy
-        canvas.create_oval(cx-r, cy-r, cx+r, cy+r,
+        # Desenha contorno internamente: reduz bbox do outline em 1px para não vazar
+        canvas.create_oval(cx - r + 1, cy - r + 1, cx + r - 1, cy + r - 1,
                            fill="#00FF88", outline="white", width=2, tags="dot")
         if self._pulse_growing[0]:
             self._pulse_r[0] += 1
@@ -140,7 +159,23 @@ class _TkCalibrationSession:
                 self._pulse_growing[0] = True
         self._root.after(30, lambda: self._animate_pulse(canvas))
 
+    def update_progress(self, ratio):
+        """Atualiza a barra de progresso (0.0–1.0). Thread-safe via after."""
+        self._cmd_queue.put(("progress", (ratio,)))
+
+    def _do_update_progress(self, ratio):
+        fill_w = int(self._bar_w * min(1.0, max(0.0, ratio)))
+        self._canvas.coords(
+            self._bar_rect,
+            self._bar_bx, self._bar_by,
+            self._bar_bx + fill_w, self._bar_by + self._bar_h,
+        )
+        if ratio >= 1.0:
+            self._collect_ready = True
+
     def _on_confirm(self, event=None):
+        if not self._collect_ready:
+            return  # ignora ENTER antes da coleta terminar
         self._pulse_active = False
         self._confirmed.set()
 
@@ -190,16 +225,31 @@ class Calibration:
                     print(f"  → Ponto {i+1}/5: {label} — olhe para o ponto e pressione ENTER")
 
                     session.show_point(monitor, i, f"{label} — Monitor: {name}")
-                    session.wait_for_confirm()
 
-                    # Coleta amostras por 1 segundo após confirmação
+                    # Pequeno warm-up para o tracker estabilizar após mudança de ponto
+                    time.sleep(0.3)
+
+                    # Coleta samples ENQUANTO o usuário olha para o ponto
+                    # A barra enche durante _COLLECT_SECS; só então ENTER é aceito
                     samples = []
-                    deadline = time.time() + 1.0
-                    while time.time() < deadline:
+                    none_count = 0
+                    t_start = time.time()
+                    while True:
+                        elapsed = time.time() - t_start
+                        ratio = elapsed / _COLLECT_SECS
+                        session.update_progress(ratio)
                         g = gaze_tracker.get_gaze()
                         if g is not None:
                             samples.append(g)
+                        else:
+                            none_count += 1
+                        if elapsed >= _COLLECT_SECS:
+                            break
                         time.sleep(0.033)
+
+                    session.wait_for_confirm()
+
+                    print(f"  [DBG] samples={len(samples)} none={none_count} total={len(samples)+none_count}")
 
                     if len(samples) < 3:
                         print(f"  [AVISO] Poucas amostras ({len(samples)}) — rosto não detectado?")
@@ -210,7 +260,7 @@ class Calibration:
                     gy = sum(s[1] for s in samples) / len(samples)
                     src_points.append([gx, gy])
                     dst_points.append([float(px), float(py)])
-                    print(f"  ✓ Gaze ({gx:.3f}, {gy:.3f}) → Pixel ({px}, {py})")
+                    print(f"  ✓ Gaze ({gx:.3f}, {gy:.3f}) → Pixel ({px}, {py}) [{len(samples)} amostras]")
 
                 src = np.float32(src_points)
                 dst = np.float32(dst_points)

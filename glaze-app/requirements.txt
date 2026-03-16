@@ -2,5 +2,5 @@ opencv-python
 numpy
 mediapipe
 scipy
-keyboard
+pynput
 pywin32

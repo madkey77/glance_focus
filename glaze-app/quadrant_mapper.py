@@ -30,6 +30,10 @@ def find_dominant_window(zone, windows):
     return best if area > 0 else None
 
 
+_IGNORED_CLASSES = {"TkTopLevel", "Tk", "Progman", "WorkerW", "Shell_TrayWnd"}
+_IGNORED_TITLES = {"tk", "Program Manager", "Windows Input Experience"}
+
+
 def _is_valid_window(hwnd):
     import win32gui
     if not win32gui.IsWindowVisible(hwnd):
@@ -37,7 +41,11 @@ def _is_valid_window(hwnd):
     if win32gui.IsIconic(hwnd):  # minimizada
         return False
     title = win32gui.GetWindowText(hwnd)
-    if not title:
+    if not title or title in _IGNORED_TITLES:
+        return False
+    # Filtra janelas Tkinter (overlay do Glaze e calibração)
+    cls = win32gui.GetClassName(hwnd)
+    if cls in _IGNORED_CLASSES:
         return False
     try:
         rect = win32gui.GetWindowRect(hwnd)

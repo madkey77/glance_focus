@@ -157,14 +157,20 @@ class GazeTracker:
     def _loop(self):
         import time as _time
         cap = cv2.VideoCapture(CAMERA_INDEX, cv2.CAP_DSHOW)
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH,  CAPTURE_WIDTH)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAPTURE_HEIGHT)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH,  640)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        real_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        real_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        print(f"[GazeTracker] Câmera aberta: {real_w}x{real_h}")
         _start = _time.time()
+        _frame_count = 0
+        _detect_count = 0
 
         while self._running:
             ret, frame = cap.read()
             if not ret:
                 continue
+            _frame_count += 1
 
             h, w = frame.shape[:2]
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -176,7 +182,10 @@ class GazeTracker:
             if not result.face_landmarks or not result.facial_transformation_matrixes:
                 with self._lock:
                     self._gaze = None
+                if _frame_count % 30 == 0:
+                    print(f"[GazeTracker] frames={_frame_count} detect={_detect_count} ts={timestamp_ms} shape={frame.shape} — sem rosto")
                 continue
+            _detect_count += 1
 
             lm = result.face_landmarks[0]
             face_matrix = np.array(result.facial_transformation_matrixes[0].data).reshape(4, 4)
