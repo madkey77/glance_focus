@@ -375,9 +375,8 @@ class _TkCalibrationSession:
         self._cmd_queue.put(("hide", ()))
 
     def destroy(self):
-        """Esconde a janela e deixa a thread daemon morrer naturalmente.
-        Não chama root.destroy() de outra thread — causa Tcl_AsyncDelete."""
-        self._cmd_queue.put(("hide", ()))
+        """Encerra a sessão Tk via fila — não chama root.destroy() diretamente (causa Tcl_AsyncDelete)."""
+        self._cmd_queue.put(("destroy", ()))
 
     def show_sweep(self, monitor, label):
         """Enfileira tela de introdução da varredura (thread-safe)."""
@@ -676,9 +675,9 @@ class Calibration:
                         frac   = te / t_trans
                         ball_x = sx + (next_x - sx) * frac
                         ball_y = sy + (next_y - sy) * frac
-                        px_abs = int(l + ball_x * w)
-                        py_abs = int(t + ball_y * h)
-                        session.sweep_ball(px_abs, py_abs, min(1.0, (time.time() - t_start) / total_duration))
+                        px_canvas = int(ball_x * w)
+                        py_canvas = int(ball_y * h)
+                        session.sweep_ball(px_canvas, py_canvas, min(1.0, (time.time() - t_start) / total_duration))
                         g = gaze_tracker.get_gaze()
                         if g is not None:
                             samples.append((g[0], g[1], ball_x, ball_y))
@@ -689,9 +688,9 @@ class Calibration:
             else:
                 ball_x += step * (1 if dx > 0 else -1)
 
-            px_abs = int(l + ball_x * w)
-            py_abs = int(t + ball_y * h)
-            session.sweep_ball(px_abs, py_abs, progress)
+            px_canvas = int(ball_x * w)
+            py_canvas = int(ball_y * h)
+            session.sweep_ball(px_canvas, py_canvas, progress)
 
             g = gaze_tracker.get_gaze()
             if g is not None:
@@ -738,7 +737,7 @@ class Calibration:
         if H is None:
             return None
         if not _skip_correction and monitor_id in getattr(self, '_poly_corrections', {}):
-            # Poly replaces full mapping — raw gaze → pixels directly, H not used
+            # Poly replaces full mapping — raw gaze → pixels directly (H presence confirms monitor is calibrated)
             coeffs_x, coeffs_y = self._poly_corrections[monitor_id]
             feat = _poly_features(x_norm, y_norm)
             x = float(np.dot(feat, coeffs_x))
