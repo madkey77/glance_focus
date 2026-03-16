@@ -20,6 +20,22 @@ def _poly_features(gx: float, gy: float) -> "np.ndarray":
     return np.array([1.0, gx, gy, gx * gx, gx * gy, gy * gy])
 
 
+def _fit_poly(gaze_pts: "np.ndarray", target_x: "np.ndarray",
+              target_y: "np.ndarray"):
+    """
+    Fits degree-2 polynomial correction via least squares.
+
+    gaze_pts: (N, 2) array of normalized gaze (gx, gy)
+    target_x, target_y: (N,) arrays of ground-truth desktop coords
+
+    Returns (coeffs_x, coeffs_y) — each a (6,) numpy array.
+    """
+    A = np.array([_poly_features(gx, gy) for gx, gy in gaze_pts])
+    coeffs_x, _, _, _ = np.linalg.lstsq(A, target_x, rcond=None)
+    coeffs_y, _, _, _ = np.linalg.lstsq(A, target_y, rcond=None)
+    return coeffs_x, coeffs_y
+
+
 # Segundos de coleta antes de liberar o ENTER
 _COLLECT_SECS = 2.0
 

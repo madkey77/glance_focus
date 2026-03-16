@@ -68,3 +68,26 @@ def test_poly_features_shape():
     assert abs(f[3] - 0.25) < 1e-9  # gx²
     assert abs(f[4] - 0.15) < 1e-9  # gx·gy
     assert abs(f[5] - 0.09) < 1e-9  # gy²
+
+
+def test_fit_poly_identity():
+    """Poly fit on perfect data should reproduce targets exactly."""
+    from calibration import _poly_features, _fit_poly
+    import numpy as np
+
+    # 10 random points where target == input (identity correction)
+    rng = np.random.default_rng(42)
+    gaze_pts = rng.uniform(0.1, 0.9, (20, 2))
+    # target_x = gaze_x * 1000 + 100  (simulates a known linear mapping)
+    target_x = gaze_pts[:, 0] * 1000 + 100
+    target_y = gaze_pts[:, 1] * 800  + 50
+
+    coeffs_x, coeffs_y = _fit_poly(gaze_pts, target_x, target_y)
+
+    # Predict on a new point
+    gx, gy = 0.5, 0.5
+    feat = _poly_features(gx, gy)
+    pred_x = float(np.dot(feat, coeffs_x))
+    pred_y = float(np.dot(feat, coeffs_y))
+    assert abs(pred_x - (0.5 * 1000 + 100)) < 5
+    assert abs(pred_y - (0.5 * 800  + 50))  < 5
