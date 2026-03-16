@@ -14,6 +14,12 @@ import numpy as np
 import cv2
 from config import CALIBRATION_FILE, CALIBRATION_SAMPLES
 
+
+def _poly_features(gx: float, gy: float) -> "np.ndarray":
+    """Degree-2 polynomial feature vector: [1, gx, gy, gx², gx·gy, gy²]."""
+    return np.array([1.0, gx, gy, gx * gx, gx * gy, gy * gy])
+
+
 # Segundos de coleta antes de liberar o ENTER
 _COLLECT_SECS = 2.0
 

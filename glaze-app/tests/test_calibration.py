@@ -55,3 +55,16 @@ def test_apply_returns_none_without_calibration():
     cal = Calibration.__new__(Calibration)
     cal._homographies = {}
     assert cal.apply(0, 0.5, 0.5) is None
+
+
+def test_poly_features_shape():
+    from calibration import _poly_features
+    import numpy as np
+    f = _poly_features(0.5, 0.3)
+    assert f.shape == (6,)
+    assert f[0] == 1.0
+    assert abs(f[1] - 0.5) < 1e-9   # gx
+    assert abs(f[2] - 0.3) < 1e-9   # gy
+    assert abs(f[3] - 0.25) < 1e-9  # gx²
+    assert abs(f[4] - 0.15) < 1e-9  # gx·gy
+    assert abs(f[5] - 0.09) < 1e-9  # gy²
