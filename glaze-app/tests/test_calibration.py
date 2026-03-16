@@ -121,3 +121,39 @@ def test_apply_uses_poly_correction():
     assert result is not None
     assert abs(result[0] - (raw_center[0] + 200)) < 10
     assert abs(result[1] - (raw_center[1] + 100)) < 10
+
+
+def test_save_load_poly_corrections(tmp_path):
+    import cv2, numpy as np
+    from calibration import Calibration, _fit_poly
+
+    cal = Calibration.__new__(Calibration)
+    src = np.float32([[0.5,0.5],[0.1,0.1],[0.9,0.1],[0.1,0.9],[0.9,0.9]])
+    dst = np.float32([[960,540],[0,0],[1920,0],[0,1080],[1920,1080]])
+    H, _ = cv2.findHomography(src, dst)
+    cal._homographies     = {0: H}
+    cal._corrections      = {}
+    rng = np.random.default_rng(7)
+    gaze_pts = rng.uniform(0.05, 0.95, (40, 2))
+    raw = [cal.apply(0, gx, gy, _skip_correction=True) for gx, gy in gaze_pts]
+    tx  = np.array([r[0] for r in raw], dtype=float)
+    ty  = np.array([r[1] for r in raw], dtype=float)
+    cx, cy = _fit_poly(gaze_pts, tx, ty)
+    cal._poly_corrections = {0: (cx, cy)}
+
+    path = str(tmp_path / "cal.json")
+    cal.save(path)
+
+    cal2 = Calibration.__new__(Calibration)
+    cal2._homographies     = {}
+    cal2._corrections      = {}
+    cal2._poly_corrections = {}
+    cal2.load(path)
+
+    assert 0 in cal2._poly_corrections
+    assert cal2._poly_corrections[0][0].shape == (6,)
+    # Predictions should be close
+    r1 = cal.apply(0, 0.5, 0.5)
+    r2 = cal2.apply(0, 0.5, 0.5)
+    assert abs(r1[0] - r2[0]) < 2
+    assert abs(r1[1] - r2[1]) < 2
