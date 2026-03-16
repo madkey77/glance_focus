@@ -485,8 +485,8 @@ class Calibration:
 
                 # Fase de refinamento gain/bias após homografia
                 self._run_refinement(session, monitor, gaze_tracker)
-
-                session.hide()
+                # Fase de varredura poly (Phase 3)
+                self._run_sweep(session, monitor, gaze_tracker)
 
         finally:
             session.destroy()
@@ -598,6 +598,134 @@ class Calibration:
             f"gain_x={gain_x:.3f} bias_x={bias_x:.1f} | "
             f"gain_y={gain_y:.3f} bias_y={bias_y:.1f}"
         )
+
+    def _run_sweep(self, session, monitor, gaze_tracker) -> bool:
+        """
+        Phase 3 calibration: slow horizontal ball sweep.
+        Collects gaze samples across full screen, fits 2D poly correction.
+        Returns True if poly fit succeeded and was stored, False if skipped/failed.
+        """
+        from config import SWEEP_SPEED, SWEEP_ROWS, SWEEP_MIN_SAMPLES
+
+        mid  = monitor["id"]
+        l, t = monitor["left"], monitor["top"]
+        w    = monitor["right"]  - l
+        h    = monitor["bottom"] - t
+
+        # Show intro and wait for ENTER or ESC
+        session.show_sweep(monitor, f"Monitor: {monitor['name']}")
+        session.wait_for_sweep_start()
+        if session.sweep_skipped():
+            print(f"  [Varredura] Monitor {mid} — pulado pelo usuário.")
+            session.sweep_done()
+            return False
+
+        # Compute sweep path
+        # Each row: from x=0.05 to x=0.95 (or reverse), at y = row position
+        row_ys   = [0.10, 0.30, 0.50, 0.70, 0.90][:SWEEP_ROWS]
+        x_margin = 0.05
+        row_w    = 1.0 - 2 * x_margin  # 0.90 normalized units
+
+        # Total path length in normalized units:
+        row_duration  = row_w / SWEEP_SPEED          # seconds per row
+        total_duration = row_duration * SWEEP_ROWS * 1.15
+
+        print(f"\n[Varredura] Monitor {mid} — iniciando (~{total_duration:.0f}s)")
+
+        samples     = []  # list of (gaze_norm_x, gaze_norm_y, ball_norm_x, ball_norm_y)
+        t_start     = time.time()
+        dt          = 0.033   # ~30fps tick
+
+        # Current ball position in normalized coords
+        ball_x = x_margin
+        ball_y = row_ys[0]
+        row_idx = 0
+        going_right = True
+
+        while True:
+            now     = time.time()
+            elapsed = now - t_start
+            progress = min(1.0, elapsed / total_duration)
+
+            # Compute target x for this row
+            target_x = (1.0 - x_margin) if going_right else x_margin
+
+            # Move ball toward target_x at SWEEP_SPEED
+            dx       = target_x - ball_x
+            step     = SWEEP_SPEED * dt
+            if abs(dx) <= step:
+                # Row complete — transition to next row
+                ball_x = target_x
+                if row_idx + 1 < len(row_ys):
+                    row_idx    += 1
+                    going_right = not going_right
+                    # Move to start of next row (diagonal, same speed)
+                    next_x = x_margin if going_right else (1.0 - x_margin)
+                    next_y = row_ys[row_idx]
+                    # Transition: interpolate both axes simultaneously
+                    tdx = abs(next_x - ball_x)
+                    tdy = abs(next_y - ball_y)
+                    t_trans = max(tdx, tdy) / SWEEP_SPEED
+                    t_trans_start = time.time()
+                    sx, sy = ball_x, ball_y
+                    while True:
+                        te = time.time() - t_trans_start
+                        if te >= t_trans:
+                            ball_x, ball_y = next_x, next_y
+                            break
+                        frac   = te / t_trans
+                        ball_x = sx + (next_x - sx) * frac
+                        ball_y = sy + (next_y - sy) * frac
+                        px_abs = int(l + ball_x * w)
+                        py_abs = int(t + ball_y * h)
+                        session.sweep_ball(px_abs, py_abs, min(1.0, (time.time() - t_start) / total_duration))
+                        g = gaze_tracker.get_gaze()
+                        if g is not None:
+                            samples.append((g[0], g[1], ball_x, ball_y))
+                        time.sleep(dt)
+                else:
+                    # All rows done
+                    break
+            else:
+                ball_x += step * (1 if dx > 0 else -1)
+
+            px_abs = int(l + ball_x * w)
+            py_abs = int(t + ball_y * h)
+            session.sweep_ball(px_abs, py_abs, progress)
+
+            g = gaze_tracker.get_gaze()
+            if g is not None:
+                samples.append((g[0], g[1], ball_x, ball_y))
+
+            time.sleep(dt)
+
+        session.sweep_done()
+        print(f"  [Varredura] {len(samples)} amostras coletadas.")
+
+        if len(samples) < SWEEP_MIN_SAMPLES:
+            print(f"  [Varredura] Amostras insuficientes ({len(samples)} < {SWEEP_MIN_SAMPLES}) — pulando poly fit.")
+            return False
+
+        # Fit polynomial
+        gaze_pts = np.array([(s[0], s[1]) for s in samples])
+        # Get raw homography predictions for each gaze point
+        raw_preds = [self.apply(mid, s[0], s[1], _skip_correction=True) for s in samples]
+        # Filter out None
+        valid = [(gaze_pts[i], raw_preds[i], samples[i][2], samples[i][3])
+                 for i in range(len(samples)) if raw_preds[i] is not None]
+        if len(valid) < SWEEP_MIN_SAMPLES:
+            print(f"  [Varredura] Predições válidas insuficientes — pulando.")
+            return False
+
+        gaze_arr  = np.array([v[0] for v in valid])
+        # Ground truth: ball position in absolute desktop coords
+        target_x_arr = np.array([l + v[2] * w for v in valid])
+        target_y_arr = np.array([t + v[3] * h for v in valid])
+
+        coeffs_x, coeffs_y = _fit_poly(gaze_arr, target_x_arr, target_y_arr)
+        self._poly_corrections[mid] = (coeffs_x, coeffs_y)
+        print(f"  [Varredura] Monitor {mid} — poly fit OK ({len(valid)} amostras válidas).")
+        return True
 
     def apply(self, monitor_id, x_norm, y_norm, _skip_correction=False):
         """
