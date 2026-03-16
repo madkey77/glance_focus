@@ -515,6 +515,7 @@ class FocusController:
         self._current_hwnd      = None
         self._fps               = 0.0
         self._last_frame_time   = None
+        self._last_valid_pos    = None  # última (ax, ay) válida — usada quando gaze sai do range
 
     def update(self, zone, dominant_window, ax=None, ay=None):
         """
@@ -531,12 +532,18 @@ class FocusController:
                 self._fps = 0.9 * self._fps + 0.1 * (1.0 / elapsed)
         self._last_frame_time = now
 
-        # Gaze perdido — notifica DesktopMap; GazeDot faz auto-hide por timeout interno
+        # Gaze fora do range ou rosto não detectado — congela overlay na última posição válida
         if zone is None or ax is None:
-            self.desktop_map.set_gaze(None, None)
+            if self._last_valid_pos is not None:
+                lax, lay = self._last_valid_pos
+                self.gaze_dot.set_position(lax, lay)
+                self.desktop_map.set_gaze(lax, lay)
+            else:
+                self.desktop_map.set_gaze(None, None)
             return
 
-        # Atualiza posição do ponto de gaze a cada frame
+        # Atualiza posição do ponto de gaze a cada frame e salva como última válida
+        self._last_valid_pos = (ax, ay)
         self.gaze_dot.set_position(ax, ay)
         self.desktop_map.set_gaze(ax, ay)
 

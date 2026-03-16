@@ -114,11 +114,13 @@ def main():
             if gaze is not None:
                 gx, gy = gaze
                 _found = False
+                _last_abs = None
                 for monitor in layout.monitors:
                     abs_pos = calibration.apply(monitor["id"], gx, gy)
                     if abs_pos is None:
                         continue
                     ax, ay = abs_pos
+                    _last_abs = (ax, ay)
                     zone = layout.get_zone(ax, ay)
                     if zone is not None:
                         dominant = mapper.get_dominant(zone)
@@ -126,7 +128,9 @@ def main():
                         _found = True
                         break
                 if not _found:
-                    controller.update(None, None)
+                    # Passa coordenadas mesmo sem zona para o overlay congelar na borda
+                    lax, lay = _last_abs if _last_abs else (None, None)
+                    controller.update(None, None, lax, lay)
             else:
                 controller.update(None, None)
 

@@ -15,10 +15,55 @@ from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision as mp_vision
 import math
 import threading
-from collections import deque
-from config import CAMERA_INDEX, CAPTURE_WIDTH, CAPTURE_HEIGHT, GAZE_SMOOTH_FRAMES
+from config import CAMERA_INDEX, CAPTURE_WIDTH, CAPTURE_HEIGHT
 
 MODEL_PATH = "face_landmarker.task"
+SACCADE_THRESHOLD = 0.04  # velocidade mínima (norm/frame) para detectar saccade
+
+
+class _OneEuroFilter:
+    """One Euro Filter (Casiez et al., CHI 2012).
+
+    Filtro adaptativo que suaviza mais em repouso e menos durante movimento
+    rápido, eliminando o lag fixo de uma média móvel simples.
+
+    Args:
+        freq:       frequência de amostragem estimada (Hz)
+        min_cutoff: suavização mínima (Hz) — menor = mais suave em repouso
+        beta:       coeficiente de velocidade — maior = mais responsivo a movimento
+        d_cutoff:   cutoff da derivada (Hz)
+    """
+
+    def __init__(self, freq: float, min_cutoff: float = 1.0,
+                 beta: float = 0.007, d_cutoff: float = 1.0):
+        self._freq = freq
+        self._min_cutoff = min_cutoff
+        self._beta = beta
+        self._d_cutoff = d_cutoff
+        self._x_prev = None
+        self._dx_prev = 0.0
+
+    def _alpha(self, cutoff: float) -> float:
+        tau = 1.0 / (2 * math.pi * cutoff)
+        te = 1.0 / self._freq
+        return 1.0 / (1.0 + tau / te)
+
+    def __call__(self, x: float) -> float:
+        if self._x_prev is None:
+            self._x_prev = x
+            return x
+        # Derivada filtrada
+        dx = (x - self._x_prev) * self._freq
+        a_d = self._alpha(self._d_cutoff)
+        dx_hat = a_d * dx + (1.0 - a_d) * self._dx_prev
+        # Cutoff adaptativo
+        cutoff = self._min_cutoff + self._beta * abs(dx_hat)
+        # Valor filtrado
+        a = self._alpha(cutoff)
+        x_hat = a * x + (1.0 - a) * self._x_prev
+        self._x_prev = x_hat
+        self._dx_prev = dx_hat
+        return x_hat
 
 # ── índices de landmarks ─────────────────────────────────────────────────────
 LEFT_IRIS         = [474, 475, 476, 477]
@@ -77,8 +122,8 @@ def _compute_gaze(landmarks, face_matrix, w, h):
 
     # Aplica rotação de yaw/pitch pelo offset da íris sobre head_forward
     # Sensibilidade: 1.5 é mais responsivo que 0.8 para movimentos sutis dos olhos
-    yaw_iris   = -offset[0] * 1.5
-    pitch_iris =  offset[1] * 1.5
+    yaw_iris   =  offset[0] * 0.75
+    pitch_iris =  offset[1] * 0.75
 
     # Matrizes de rotação 3D
     def rot_x(a):
@@ -112,7 +157,9 @@ class GazeTracker:
         self._gaze = None
         self._running = False
         self._thread = None
-        self._smooth_buf = deque(maxlen=GAZE_SMOOTH_FRAMES)
+        self._filter_x = _OneEuroFilter(freq=30.0)
+        self._filter_y = _OneEuroFilter(freq=30.0)
+        self._prev_gaze = None
 
         self._calib_yaw   = 0.0
         self._calib_pitch = 0.0
@@ -137,6 +184,7 @@ class GazeTracker:
 
     def stop(self):
         self._running = False
+        self._prev_gaze = None
         if self._thread:
             self._thread.join(timeout=2)
         self._detector.close()
@@ -205,9 +253,24 @@ class GazeTracker:
             x_norm = max(0.0, min(1.0, 0.5 + yaw   / math.radians(90)))
             y_norm = max(0.0, min(1.0, 0.5 + pitch  / math.radians(70)))
 
-            self._smooth_buf.append((x_norm, y_norm))
-            xs = sum(p[0] for p in self._smooth_buf) / len(self._smooth_buf)
-            ys = sum(p[1] for p in self._smooth_buf) / len(self._smooth_buf)
+            # Saccade detection: se velocidade exceder threshold, passa bruto e
+            # reseta os filtros para evitar que puxem o gaze de volta ao valor antigo.
+            if self._prev_gaze is not None:
+                dx = x_norm - self._prev_gaze[0]
+                dy = y_norm - self._prev_gaze[1]
+                speed = math.sqrt(dx * dx + dy * dy)
+                if speed > SACCADE_THRESHOLD:
+                    xs, ys = x_norm, y_norm
+                    self._filter_x = _OneEuroFilter(freq=30.0)
+                    self._filter_y = _OneEuroFilter(freq=30.0)
+                else:
+                    xs = self._filter_x(x_norm)
+                    ys = self._filter_y(y_norm)
+            else:
+                xs = self._filter_x(x_norm)
+                ys = self._filter_y(y_norm)
+
+            self._prev_gaze = (x_norm, y_norm)
 
             with self._lock:
                 self._gaze = (xs, ys)
