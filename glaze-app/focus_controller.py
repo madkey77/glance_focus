@@ -665,9 +665,14 @@ class FocusController:
                 self._fps = 0.9 * self._fps + 0.1 * (1.0 / elapsed)
         self._last_frame_time = now
 
-        # Gaze fora do range ou rosto não detectado — congela overlay na última posição válida
+        # Gaze fora do range ou rosto não detectado
         if zone is None or ax is None:
-            if self._last_valid_pos is not None:
+            if ax is not None and ay is not None:
+                # Gaze na borda clamped — move bolinha mas não dispara foco
+                self.gaze_dot.set_position(ax, ay)
+                self.desktop_map.set_gaze(ax, ay)
+            elif self._last_valid_pos is not None:
+                # Rosto perdido — congela na última posição válida
                 lax, lay = self._last_valid_pos
                 self.gaze_dot.set_position(lax, lay)
                 self.desktop_map.set_gaze(lax, lay)
