@@ -12,3 +12,7 @@ MIN_WINDOW_SIZE = 200         # px — tamanho mínimo de janela considerada
 
 CALIBRATION_FILE = "calibration.json"
 CALIBRATION_SAMPLES = 5       # amostras coletadas por ponto de calibração
+
+SWEEP_SPEED       = 0.08   # normalized units/second — ball speed
+SWEEP_ROWS        = 5      # number of horizontal rows
+SWEEP_MIN_SAMPLES = 30     # minimum valid samples to attempt poly fit
