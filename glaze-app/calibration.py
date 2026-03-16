@@ -308,8 +308,9 @@ class _TkCalibrationSession:
 
 class Calibration:
     def __init__(self):
-        self._homographies = {}  # monitor_id → H (3x3 numpy)
-        self._corrections = {}   # monitor_id → (gain_x, bias_x, gain_y, bias_y)
+        self._homographies    = {}  # monitor_id → H (3x3 numpy)
+        self._corrections     = {}  # monitor_id → (gain_x, bias_x, gain_y, bias_y)
+        self._poly_corrections = {} # monitor_id → (coeffs_x, coeffs_y) numpy arrays
 
     def run_calibration(self, monitors, gaze_tracker):
         """
@@ -508,16 +509,23 @@ class Calibration:
         Mapeia gaze normalizado → (x_abs, y_abs) em pixels.
         Retorna None se não calibrado.
 
-        _skip_correction: se True, ignora a correção gain/bias (uso interno do refinamento).
+        _skip_correction: se True, ignora correções (uso interno do refinamento/sweep).
         """
         H = self._homographies.get(monitor_id)
         if H is None:
             return None
+        if not _skip_correction and monitor_id in getattr(self, '_poly_corrections', {}):
+            # Poly replaces full mapping — raw gaze → pixels directly, H not used
+            coeffs_x, coeffs_y = self._poly_corrections[monitor_id]
+            feat = _poly_features(x_norm, y_norm)
+            x = float(np.dot(feat, coeffs_x))
+            y = float(np.dot(feat, coeffs_y))
+            return int(x), int(y)
+        # Homography path
         pt = np.float32([[[x_norm, y_norm]]])
         result = cv2.perspectiveTransform(pt, H)
         x, y = result[0][0]
-        # Aplica correção gain/bias se disponível e não estiver sendo chamado pelo refinamento
-        if not _skip_correction and monitor_id in self._corrections:
+        if not _skip_correction and monitor_id in getattr(self, '_corrections', {}):
             gx, bx, gy, by = self._corrections[monitor_id]
             x = gx * x + bx
             y = gy * y + by
@@ -528,12 +536,14 @@ class Calibration:
         data = {
             "homographies": {
                 str(k): v.tolist()
-                for k, v in self._homographies.items()
-                if v is not None
+                for k, v in self._homographies.items() if v is not None
             },
             "corrections": {
-                str(k): list(v)
-                for k, v in self._corrections.items()
+                str(k): list(v) for k, v in getattr(self, '_corrections', {}).items()
+            },
+            "poly_corrections": {
+                str(k): {"coeffs_x": v[0].tolist(), "coeffs_y": v[1].tolist()}
+                for k, v in getattr(self, '_poly_corrections', {}).items()
             },
         }
         with open(path, "w") as f:
@@ -556,15 +566,24 @@ class Calibration:
                     int(k): tuple(v)
                     for k, v in data.get("corrections", {}).items()
                 }
+                self._poly_corrections = {
+                    int(k): (
+                        np.array(v["coeffs_x"]),
+                        np.array(v["coeffs_y"]),
+                    )
+                    for k, v in data.get("poly_corrections", {}).items()
+                }
             else:
                 # Formato antigo: cada chave é um monitor_id, valor é a homografia
                 self._homographies = {int(k): np.array(v) for k, v in data.items()}
                 self._corrections = {}
+                self._poly_corrections = {}
 
             n_corr = len(self._corrections)
+            n_poly = len(self._poly_corrections)
             print(
                 f"[Calibração] Carregado de {path} "
-                f"({len(self._homographies)} monitores, {n_corr} correções)"
+                f"({len(self._homographies)} monitores, {n_corr} correções, {n_poly} poly)"
             )
             return True
         except FileNotFoundError:

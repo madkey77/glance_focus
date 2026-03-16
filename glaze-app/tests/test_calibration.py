@@ -91,3 +91,33 @@ def test_fit_poly_identity():
     pred_y = float(np.dot(feat, coeffs_y))
     assert abs(pred_x - (0.5 * 1000 + 100)) < 5
     assert abs(pred_y - (0.5 * 800  + 50))  < 5
+
+
+def test_apply_uses_poly_correction():
+    """apply() should use poly_corrections when available."""
+    import cv2
+    import numpy as np
+    from calibration import Calibration, _fit_poly
+
+    cal = Calibration.__new__(Calibration)
+    src = np.float32([[0.5,0.5],[0.1,0.1],[0.9,0.1],[0.1,0.9],[0.9,0.9]])
+    dst = np.float32([[960,540],[0,0],[1920,0],[0,1080],[1920,1080]])
+    H, _ = cv2.findHomography(src, dst)
+    cal._homographies = {0: H}
+    cal._corrections  = {}
+
+    # Fit a poly that shifts x by +200, y by +100
+    rng = np.random.default_rng(0)
+    gaze_pts = rng.uniform(0.05, 0.95, (50, 2))
+    # Get raw homography predictions for these gaze points
+    raw = [cal.apply(0, gx, gy, _skip_correction=True) for gx, gy in gaze_pts]
+    target_x = np.array([r[0] + 200 for r in raw], dtype=float)
+    target_y = np.array([r[1] + 100 for r in raw], dtype=float)
+    coeffs_x, coeffs_y = _fit_poly(gaze_pts, target_x, target_y)
+    cal._poly_corrections = {0: (coeffs_x, coeffs_y)}
+
+    result = cal.apply(0, 0.5, 0.5)
+    raw_center = cal.apply(0, 0.5, 0.5, _skip_correction=True)
+    assert result is not None
+    assert abs(result[0] - (raw_center[0] + 200)) < 10
+    assert abs(result[1] - (raw_center[1] + 100)) < 10
