@@ -48,7 +48,12 @@ webcam → GazeTracker → Calibration → MonitorLayout → QuadrantMapper → 
 
 - **`gaze_tracker.py`** — Runs MediaPipe FaceLandmarker in a background thread. Combines `facial_transformation_matrix` (head pose) with iris offset deviation to compute a normalized gaze `(x, y)` in `[0..1]`. Exposes `get_gaze() → (x,y) | None`.
 
-- **`calibration.py`** — 5-point calibration per monitor (center first, then 4 corners). Uses a dedicated Tkinter thread (`_TkCalibrationSession`) to display calibration UI safely — never call Tk from a non-Tk thread. Computes a 2D homography (OpenCV `findHomography`) mapping normalized gaze → absolute desktop pixels. Persists to `calibration.json`.
+- **`calibration.py`** — Three-phase calibration per monitor:
+  1. **Homography** — 5 static points (center + 4 corners) → `cv2.findHomography`
+  2. **Gain/Bias** — 3 validation points → linear correction per axis
+  3. **Sweep** (optional) — slow moving ball across 5 horizontal rows → 2D polynomial correction (degree 2, `numpy.linalg.lstsq`)
+
+  `apply()` priority: poly_corrections → gain/bias → raw homography. Uses a dedicated Tkinter thread (`_TkCalibrationSession`) to display calibration UI safely — never call Tk from a non-Tk thread. Persists to `calibration.json` (retrocompatible with older formats).
 
 - **`monitor_layout.py`** — Enumerates Windows monitors via `win32api.EnumDisplayMonitors`. Divides each monitor into 4 quadrants. Exposes `get_zone(x_abs, y_abs)`.
 
